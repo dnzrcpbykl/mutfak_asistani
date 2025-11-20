@@ -1,4 +1,3 @@
-// lib/features/market/market_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/models/market_price.dart';
 
@@ -11,23 +10,28 @@ class MarketService {
     return snapshot.docs.map((doc) => MarketPrice.fromFirestore(doc)).toList();
   }
 
-  // Eksik malzemelerin toplam tahmini maliyetini hesaplar
+  // GÜNCEL HESAPLAMA MANTIĞI
   double calculateMissingCost(List<String> missingIngredients, List<MarketPrice> allPrices) {
     double totalCost = 0;
 
-    for (var ingredient in missingIngredients) {
-      // Bu malzeme için fiyatları bul
-      final pricesForThis = allPrices.where(
-        (p) => p.ingredientName.toLowerCase() == ingredient.trim().toLowerCase()
-      ).toList();
+    for (var missingItem in missingIngredients) {
+      String searchKey = missingItem.trim().toLowerCase();
+
+      // Fiyat listesinde bu malzemeye benzeyen bir şey var mı?
+      // Örn: Eksik="Soğan", Market="Kuru Soğan" -> Eşleşmeli.
+      final pricesForThis = allPrices.where((p) {
+        String marketItemName = p.ingredientName.toLowerCase();
+        return marketItemName.contains(searchKey) || searchKey.contains(marketItemName);
+      }).toList();
 
       if (pricesForThis.isNotEmpty) {
         // En ucuz fiyatı bul ve ekle
-        // (pricesForThis listesini fiyata göre küçükten büyüğe sırala, ilkini al)
         pricesForThis.sort((a, b) => a.price.compareTo(b.price));
         totalCost += pricesForThis.first.price;
       } else {
-        // Fiyat bulunamazsa ortalama bir değer ekle veya 0 say (Şimdilik 0)
+        // Fiyat bulunamazsa varsayılan bir ortalama fiyat ekleyebiliriz (Örn: 20 TL)
+        // Şimdilik 0 ekliyoruz ki yanlış bilgi vermeyelim.
+        totalCost += 0; 
       }
     }
     return totalCost;

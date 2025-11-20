@@ -58,6 +58,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   }
 
   // Kiler'e ürün ekleme
+  // Kiler'e ürün ekleme
   Future<void> _addItemToPantry() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedIngredient == null) {
@@ -84,22 +85,30 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
           createdAt: Timestamp.now(),
         );
 
+        // Bekleme işlemi başlıyor
         await _pantryService.addPantryItem(newItem);
 
-        if (!context.mounted) return;
-        
+        // --- DÜZELTME BURADA ---
+        // İşlem bittiğinde ekran hala yerinde mi kontrol et
+        if (!mounted) return;
+        // -----------------------
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Ürün kiler'e başarıyla eklendi!")),
         );
         Navigator.of(context).pop(); 
 
       } catch (e) {
-        if (!context.mounted) return;
+        // Hata durumunda da kontrol etmeliyiz
+        if (mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Hata: ${e.toString()}")),
         );
       } finally {
-        if (mounted) setState(() => _isLoading = false);
+        // Finally bloğunda da kontrol şart
+        if (context.mounted) {
+           setState(() => _isLoading = false);
+        }
       }
     }
   }

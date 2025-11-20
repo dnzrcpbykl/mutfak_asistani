@@ -8,6 +8,8 @@ class Recipe {
   final List<String> ingredients; // Gerekli malzemelerin isimleri (Örn: ["Domates", "Yumurta"])
   final String instructions; // Yapılışı
   final int prepTime; // Dakika
+  final String difficulty; // Kolay, Orta, Zor
+  final String category;   // Sebze, Et, Tatlı vb.
 
   Recipe({
     required this.id,
@@ -15,7 +17,9 @@ class Recipe {
     required this.description,
     required this.ingredients,
     required this.instructions,
-    required this.prepTime,
+    this.prepTime = 15, 
+    this.difficulty = 'Orta',
+    this.category = 'Genel',
   });
 
   factory Recipe.fromFirestore(DocumentSnapshot doc) {
@@ -27,7 +31,9 @@ class Recipe {
       // Firestore'dan gelen listeyi Dart listesine çeviriyoruz:
       ingredients: List<String>.from(data['ingredients'] ?? []),
       instructions: data['instructions'] ?? '',
-      prepTime: data['prepTime'] ?? 0,
+      prepTime: data['prepTime'] ?? 15,
+      difficulty: data['difficulty'] ?? 'Orta',
+      category: data['category'] ?? 'Genel',
     );
   }
 }
