@@ -21,6 +21,7 @@ dependencies:
   google_generative_ai: ^0.4.6
   http: ^1.2.0
   flutter_dotenv: ^5.2.1
+  google_fonts: ^6.3.2
 
 dev_dependencies:
   flutter_test:

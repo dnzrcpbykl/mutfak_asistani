@@ -1,16 +1,21 @@
-// lib/core/models/pantry_item.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PantryItem {
-  final String id; // Firestore doküman ID'si
+  final String id;
   final String userId;
-  final String ingredientId; // Hangi malzeme (Ingredient tablosundan)
-  final String ingredientName; // Kolaylık için malzemenin adı
+  final String ingredientId;
+  final String ingredientName;
   double quantity;
-  String unit; // ad/kg/litre
-  DateTime? expirationDate; // Son kullanma tarihi (nullable)
-  Timestamp createdAt; // Eklendiği zaman
+  String unit;
+  DateTime? expirationDate;
+  Timestamp createdAt;
+  final String? brand;
+  final String? marketName;
+  final double? price;
+  
+  // --- YENİ EKLENEN ALAN ---
+  final String category; // Örn: "Süt Ürünleri", "Bakliyat"
+  // -------------------------
 
   PantryItem({
     required this.id,
@@ -21,9 +26,12 @@ class PantryItem {
     required this.unit,
     this.expirationDate,
     required this.createdAt,
+    this.brand,
+    this.marketName,
+    this.price,
+    this.category = 'Diğer', // Varsayılan değer
   });
 
-  // Firestore'dan veri okurken
   factory PantryItem.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return PantryItem(
@@ -35,10 +43,14 @@ class PantryItem {
       unit: data['unit'] ?? 'adet',
       expirationDate: (data['expirationDate'] as Timestamp?)?.toDate(),
       createdAt: data['createdAt'] ?? Timestamp.now(),
+      brand: data['brand'],
+      marketName: data['marketName'],
+      price: (data['price'] as num?)?.toDouble(),
+      // Kategori verisini al, yoksa 'Diğer' yap
+      category: data['category'] ?? 'Diğer',
     );
   }
 
-  // Firestore'a veri yazarken
   Map<String, dynamic> toFirestore() {
     return {
       'userId': userId,
@@ -48,6 +60,11 @@ class PantryItem {
       'unit': unit,
       'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate!) : null,
       'createdAt': createdAt,
+      'brand': brand,
+      'marketName': marketName,
+      'price': price,
+      // Kaydederken ekle
+      'category': category,
     };
   }
 }

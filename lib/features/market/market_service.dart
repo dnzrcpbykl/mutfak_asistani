@@ -10,28 +10,49 @@ class MarketService {
     return snapshot.docs.map((doc) => MarketPrice.fromFirestore(doc)).toList();
   }
 
-  // GÜNCEL HESAPLAMA MANTIĞI
+  // --- YENİ: FİYAT KAYDETME FONKSİYONU ---
+  // Fişten okunan fiyatı, diğer kullanıcıların da faydalanabileceği (veya senin referans alacağın) havuza atar.
+  Future<void> addPriceInfo(String ingredientName, String marketName, double price) async {
+    // Önce bu ürün ve market kombinasyonu var mı bakalım
+    final query = await _firestore.collection('market_prices')
+        .where('ingredientName', isEqualTo: ingredientName)
+        .where('marketName', isEqualTo: marketName)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      // Varsa fiyatı güncelle
+      await query.docs.first.reference.update({
+        'price': price,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Yoksa yeni ekle
+      await _firestore.collection('market_prices').add({
+        'ingredientName': ingredientName,
+        'marketName': marketName,
+        'price': price,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+  // ---------------------------------------
+
+  // Eksik maliyeti hesapla
   double calculateMissingCost(List<String> missingIngredients, List<MarketPrice> allPrices) {
     double totalCost = 0;
-
     for (var missingItem in missingIngredients) {
       String searchKey = missingItem.trim().toLowerCase();
-
-      // Fiyat listesinde bu malzemeye benzeyen bir şey var mı?
-      // Örn: Eksik="Soğan", Market="Kuru Soğan" -> Eşleşmeli.
+      
       final pricesForThis = allPrices.where((p) {
         String marketItemName = p.ingredientName.toLowerCase();
+        // Basit içerir kontrolü
         return marketItemName.contains(searchKey) || searchKey.contains(marketItemName);
       }).toList();
 
       if (pricesForThis.isNotEmpty) {
-        // En ucuz fiyatı bul ve ekle
+        // En ucuz fiyatı baz al
         pricesForThis.sort((a, b) => a.price.compareTo(b.price));
         totalCost += pricesForThis.first.price;
-      } else {
-        // Fiyat bulunamazsa varsayılan bir ortalama fiyat ekleyebiliriz (Örn: 20 TL)
-        // Şimdilik 0 ekliyoruz ki yanlış bilgi vermeyelim.
-        totalCost += 0; 
       }
     }
     return totalCost;

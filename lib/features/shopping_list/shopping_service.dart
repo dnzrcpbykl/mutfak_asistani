@@ -1,3 +1,4 @@
+// lib/features/shopping_list/shopping_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/models/shopping_item.dart';
@@ -5,7 +6,6 @@ import '../../core/models/shopping_item.dart';
 class ShoppingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Kullanıcının alışveriş listesine erişim referansı
   CollectionReference<ShoppingItem> get _listRef {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) throw Exception("Kullanıcı yok");
@@ -20,31 +20,47 @@ class ShoppingService {
         );
   }
 
-  // 1. Listeyi Getir (Canlı)
   Stream<List<ShoppingItem>> getShoppingList() {
-    // Eklenenler tarihe göre sıralı gelsin
     return _listRef.orderBy('createdAt', descending: true).snapshots().map(
         (snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 
-  // 2. Ürün Ekle
-  Future<void> addItem(String name) async {
-    if (name.trim().isEmpty) return;
-    final newItem = ShoppingItem(id: '', name: name.trim(), isCompleted: false);
-    await _listRef.add(newItem);
-  }
+  // --- GÜNCELLENEN KISIM: BÜYÜK/KÜÇÜK HARF DUYARSIZ KONTROL ---
+  Future<bool> addItem(String name) async {
+    final cleanName = name.trim(); // Baştaki/sondaki boşlukları al
+    if (cleanName.isEmpty) return false;
 
-  // 3. İşaretle / İşareti Kaldır (Toggle)
+    // 1. Veritabanından henüz "alınmamış" (isCompleted: false) tüm ürünleri çek
+    final activeItemsSnapshot = await _listRef
+        .where('isCompleted', isEqualTo: false) 
+        .get();
+
+    // 2. Dart tarafında döngüyle kontrol et (En güvenli yöntem)
+    // "Ekmek", "ekmek", "EKMEK" -> hepsi "ekmek" olur ve eşleşir.
+    for (var doc in activeItemsSnapshot.docs) {
+      final existingName = doc.data().name;
+      
+      if (existingName.toLowerCase() == cleanName.toLowerCase()) {
+        // Zaten listede var (Büyük/küçük harf farketmeksizin)
+        return false; 
+      }
+    }
+
+    // 3. Eşleşme yoksa ekle (Kullanıcının yazdığı orijinal haliyle)
+    final newItem = ShoppingItem(id: '', name: cleanName, isCompleted: false);
+    await _listRef.add(newItem);
+    return true;
+  }
+  // -------------------------------------------------------------
+
   Future<void> toggleStatus(String id, bool currentStatus) async {
     await _listRef.doc(id).update({'isCompleted': !currentStatus});
   }
 
-  // 4. Sil
   Future<void> deleteItem(String id) async {
     await _listRef.doc(id).delete();
   }
 
-  // 5. Tamamlananları Temizle (Toplu Silme - İsteğe Bağlı)
   Future<void> clearCompleted() async {
     final snapshot = await _listRef.where('isCompleted', isEqualTo: true).get();
     for (var doc in snapshot.docs) {

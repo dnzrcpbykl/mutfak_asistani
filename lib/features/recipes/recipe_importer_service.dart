@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../secrets.dart'; 
+import '../../secrets.dart';
 
 class RecipeImporterService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // 1. Önceki Tarifleri Temizle (Sil)
+  // 1. Önceki Tarifleri Temizle
   Future<void> _clearOldRecipes() async {
     final snapshot = await _firestore.collection('recipes').get();
     for (var doc in snapshot.docs) {
@@ -18,16 +18,13 @@ class RecipeImporterService {
 
   // 2. Kilerdeki Malzemelere Göre Tarif Üret
   Future<void> generateRecipesFromPantry(List<String> myIngredients) async {
-    // Önce temizlik yap
     await _clearOldRecipes();
 
     if (myIngredients.isEmpty) {
-      debugPrint("⚠️ Kiler boş, rastgele öneri yapılacak.");
-      // Kiler boşsa genel popüler yemekler isteyebiliriz veya uyarı verdirebiliriz.
-      // Şimdilik devam edelim, Gemini "elindekilerle bir şey yapamazsın" diyebilir veya basit şeyler önerir.
+      debugPrint("⚠️ Kiler boş.");
+      return;
     }
 
-    // Malzeme listesini metne çevir (Örn: "Domates, Biber, Yumurta")
     String ingredientsText = myIngredients.join(", ");
     debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText");
 
@@ -37,33 +34,35 @@ class RecipeImporterService {
 
     final headers = {'Content-Type': 'application/json'};
 
-    // AKILLI PROMPT (Senin isteğine göre düzenlendi)
+    // --- PROMPT GÜNCELLEMESİ ---
     final prompt = '''
-      Sen uzman bir Türk aşçısısın. Bir kullanıcının elinde şu malzemeler var:
-      [$ingredientsText]
+      Sen Türk mutfağına hakim uzman bir şefsin.
+      Elimdeki malzemeler: [$ingredientsText]
       
       GÖREVİN:
-      Bu malzemelerin ÇOĞUNLUĞUNU kullanarak yapılabilecek en iyi 5 Türk yemeği tarifini ver.
+      Bu malzemelerin ÇOĞUNLUĞUNU kullanarak yapılabilecek en iyi 5-6 tarifi ver.
       
-      KURALLAR:
-      1. Öncelik eldeki malzemelerle yapılabilen yemeklerindir.
-      2. Eğer tam uyan yemek yoksa, kullanıcının en fazla 1-2 malzeme satın alarak yapabileceği yemekleri öner.
-      3. Cevabın SADECE geçerli bir JSON listesi olsun.
+      ÖNEMLİ KURAL:
+      Malzeme listesinde ASLA marka adı kullanma. (Örn: "Dr. Oetker Kabartma Tozu" yazma, sadece "Kabartma Tozu" yaz. "Pınar Süt" yazma, "Süt" yaz).
+      
+      ÖNCELİK SIRALAMASI:
+      1. Çorbalar
+      2. Ana Yemekler
+      3. Ara Sıcak / Aperatif
+      4. Tatlı
       
       JSON FORMATI:
       [
         {
           "name": "Yemek Adı",
           "description": "Kısa açıklama",
-          "ingredients": ["Malzeme 1", "Malzeme 2"],
+          "ingredients": ["Malzeme 1", "Malzeme 2"], // Markasız yalın isimler!
           "instructions": "Yapılış...",
           "prepTime": 30,
           "difficulty": "Kolay", 
           "category": "Ana Yemek"
         }
       ]
-      
-      NOT: "ingredients" listesine sadece malzeme adını yaz (Miktar yazma).
     ''';
 
     final body = jsonEncode({
@@ -76,27 +75,30 @@ class RecipeImporterService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         String content = data['candidates'][0]['content']['parts'][0]['text'];
-        content = content.replaceAll('```json', '').replaceAll('```', '').trim();
-
-        List<dynamic> recipesJson = jsonDecode(content);
-        final batch = _firestore.batch();
-
-        for (var item in recipesJson) {
-          final docRef = _firestore.collection('recipes').doc();
-          batch.set(docRef, {
-            'name': item['name'],
-            'description': item['description'],
-            'ingredients': item['ingredients'],
-            'instructions': item['instructions'],
-            'prepTime': item['prepTime'],
-            'difficulty': item['difficulty'],
-            'category': item['category'],
-          });
-        }
-
-        await batch.commit(); 
-        debugPrint("✅ Şef ${recipesJson.length} tarif önerdi!");
         
+        // JSON Temizliği
+        final jsonMatch = RegExp(r'\[\s*\{.*?\}\s*\]', dotAll: true).firstMatch(content);
+
+        if (jsonMatch != null) {
+          String cleanJson = jsonMatch.group(0)!;
+          List<dynamic> recipesJson = jsonDecode(cleanJson);
+          
+          final batch = _firestore.batch();
+          for (var item in recipesJson) {
+            final docRef = _firestore.collection('recipes').doc();
+            batch.set(docRef, {
+              'name': item['name'],
+              'description': item['description'],
+              'ingredients': item['ingredients'],
+              'instructions': item['instructions'],
+              'prepTime': item['prepTime'],
+              'difficulty': item['difficulty'],
+              'category': item['category'], // Kategori artık standart
+            });
+          }
+          await batch.commit(); 
+          debugPrint("✅ Şef ${recipesJson.length} tarif önerdi!");
+        }
       } else {
         throw Exception("API Hatası: ${response.statusCode}");
       }
