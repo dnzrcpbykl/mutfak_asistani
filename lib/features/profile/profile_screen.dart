@@ -101,7 +101,7 @@ class ProfileScreen extends StatelessWidget {
                     color: isDark ? AppTheme.neonCyan : Colors.orange,
                   ),
                   value: isDark,
-                  activeColor: AppTheme.neonCyan,
+                  activeThumbColor: AppTheme.neonCyan,
                   onChanged: (value) {
                     themeNotifier.toggleTheme();
                   },

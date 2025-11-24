@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'shopping_service.dart';
 import '../../core/models/shopping_item.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../core/widgets/empty_state_widget.dart';
 
 class ShoppingListView extends StatefulWidget {
   const ShoppingListView({super.key});
@@ -89,26 +91,28 @@ class _ShoppingListViewState extends State<ShoppingListView> {
             // --- 2. LİSTE ---
             Expanded(
               child: items.isEmpty
-                  ? Center(
-                      child: Text(
-                        "Listeniz boş.\nAlttaki kutucuğa yazıp ekleyebilirsiniz.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5)),
-                      ),
+                  ? const EmptyStateWidget(
+                      icon: Icons.shopping_cart_outlined,
+                      message: "Sepetin Bomboş!",
+                      subMessage: "Hadi alttaki kutuya yazarak ihtiyaçlarını ekle.",
                     )
                   : ListView.builder(
                       itemCount: items.length,
                       padding: const EdgeInsets.only(bottom: 80),
                       itemBuilder: (context, index) {
                         final item = items[index];
+                        // Animasyon eklenmiş Liste Elemanı
                         return Card(
-                          // Rengi ve gölgesi AppTheme'den otomatik gelir
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          elevation: 2,
+                          shadowColor: colorScheme.primary.withOpacity(0.1),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                             leading: Checkbox(
                               value: item.isCompleted,
-                              activeColor: colorScheme.primary, // Tik rengi (Neon/Turkuaz)
-                              checkColor: colorScheme.onPrimary, // Tik işareti rengi
-                              side: BorderSide(color: Colors.grey.shade400),
+                              activeColor: colorScheme.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                               onChanged: (bool? value) {
                                 _service.toggleStatus(item.id, item.isCompleted);
                               },
@@ -117,26 +121,21 @@ class _ShoppingListViewState extends State<ShoppingListView> {
                               item.name,
                               style: TextStyle(
                                 fontSize: 16,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
                                 decoration: item.isCompleted ? TextDecoration.lineThrough : null,
-                                // Tamamlandıysa gri, değilse temanın yazı rengi (Siyah/Beyaz)
-                                color: item.isCompleted 
-                                    ? Colors.grey 
-                                    : colorScheme.onSurface,
+                                color: item.isCompleted ? Colors.grey : colorScheme.onSurface,
                               ),
                             ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              tooltip: "Listeden Sil",
-                              onPressed: () {
-                                _service.deleteItem(item.id);
-                              },
+                              onPressed: () => _service.deleteItem(item.id),
                             ),
-                            onTap: () {
-                              _service.toggleStatus(item.id, item.isCompleted);
-                            },
+                            onTap: () => _service.toggleStatus(item.id, item.isCompleted),
                           ),
-                        );
+                        )
+                        .animate(delay: (index * 50).ms) // Her eleman 50ms gecikmeli gelsin (Domino etkisi)
+                        .slideX(begin: 1, end: 0, curve: Curves.easeOutQuad) // Sağdan sola kay
+                        .fadeIn(); // Görünür ol
                       },
                     ),
             ),

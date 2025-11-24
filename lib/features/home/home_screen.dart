@@ -5,6 +5,8 @@ import '../pantry/add_pantry_item_screen.dart';
 import '../pantry/pantry_service.dart';
 import '../../core/models/pantry_item.dart';
 import '../shopping_list/shopping_list_view.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../core/widgets/empty_state_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -192,26 +194,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Filtrelenmiş Liste Oluşturucu
   Widget _buildCategoryList(String category, List<PantryItem> allItems) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
-    // Filtreleme Mantığı
+    // ... Filtreleme mantığı aynı kalsın ...
     final filteredItems = category == "Tümü" 
         ? allItems 
         : allItems.where((item) => _normalizeCategory(item.category) == category).toList();
 
     if (filteredItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.layers_clear, size: 60, color: Colors.grey.withOpacity(0.3)),
-            const SizedBox(height: 10),
-            Text(
-              "$category kategorisi boş.", 
-              style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5)),
-            ),
-          ],
-        ),
+      // YENİ BOŞ DURUM WIDGET'I
+      return EmptyStateWidget(
+        icon: Icons.kitchen, // Veya kategoriye özel ikon
+        message: "$category Rafı Boş",
+        subMessage: "Sağ alttaki (+) butonuyla veya fiş taratarak ürün ekleyebilirsin.",
       );
     }
 
@@ -220,7 +213,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.only(bottom: 80, top: 10),
       itemBuilder: (context, index) {
         final item = filteredItems[index];
-        return _buildPantryItemTile(item, colorScheme);
+        
+        // Animasyonlu Kart
+        return _buildPantryItemTile(item, Theme.of(context).colorScheme)
+            .animate(delay: (index * 50).ms)
+            .slideY(begin: 0.2, end: 0) // Aşağıdan yukarı hafifçe çıksın
+            .fadeIn();
       },
     );
   }

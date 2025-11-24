@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:intl/intl.dart'; 
-import 'package:image_picker/image_picker.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart'; // <--- EKLENDİ
 
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
 import 'pantry_service.dart';
-import '../ocr/ocr_service.dart'; 
+import 'barcode_service.dart'; // <--- EKLENDİ
+import '../ocr/ocr_service.dart';
 import '../ocr/scanned_products_screen.dart';
 
 class AddPantryItemScreen extends StatefulWidget {
   const AddPantryItemScreen({super.key});
-
   @override
   State<AddPantryItemScreen> createState() => _AddPantryItemScreenState();
 }
@@ -23,15 +24,128 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   final _ingredientNameController = TextEditingController();
   DateTime? _selectedExpirationDate;
 
-  List<Ingredient> _searchResults = []; 
-  Ingredient? _selectedIngredient; 
+  List<Ingredient> _searchResults = [];
+  Ingredient? _selectedIngredient;
 
   final PantryService _pantryService = PantryService();
   final OCRService _ocrService = OCRService();
+  final BarcodeService _barcodeService = BarcodeService(); // <--- EKLENDİ
+  
   bool _isLoading = false;
 
-  // ... (Manuel Ekleme Fonksiyonları Aynen Kalıyor - _searchIngredients, _selectDate, _addItemToPantry) ...
-  
+  // --- BARKOD TARAMA FONKSİYONU ---
+  Future<void> _scanBarcode() async {
+    // Kamera Sayfasını Aç
+    final String? scannedCode = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text("Barkodu Okut"), backgroundColor: Colors.black),
+          body: MobileScanner(
+            controller: MobileScannerController(
+              detectionSpeed: DetectionSpeed.noDuplicates,
+              returnImage: false,
+            ),
+            onDetect: (capture) {
+              final List<Barcode> barcodes = capture.barcodes;
+              if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
+                Navigator.pop(context, barcodes.first.rawValue);
+              }
+            },
+          ),
+
+          
+        ),
+      ),
+    );
+
+    // Barkod geldiyse işlem yap
+    if (scannedCode != null) {
+      setState(() => _isLoading = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün aranıyor...")));
+      
+      // Servise Sor (Firebase veya API)
+      final productName = await _barcodeService.findProduct(scannedCode);
+      
+      setState(() => _isLoading = false);
+
+      if (productName != null && productName.isNotEmpty) {
+        // BULUNDU!
+        setState(() {
+           _ingredientNameController.text = productName;
+        });
+        _searchIngredients(productName); // Bizim kiler veritabanında var mı diye bak (Kategori için)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Bulundu: $productName"), backgroundColor: Colors.green));
+      } else {
+        // BULUNAMADI! -> Kullanıcıya sor (Dialog aç)
+        _showAddProductDialog(scannedCode);
+      }
+    }
+  }
+
+  // Ürün bulunamadığında açılan pencere
+  void _showAddProductDialog(String barcode) {
+    final nameController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Ürün Bulunamadı 😔"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Kullanıcıyı motive eden mesaj
+            const Text("Bu ürünü veritabanımızda ilk gören sensin!"),
+            const SizedBox(height: 8),
+            const Text("Adını yazıp kaydedersen, bu barkod veritabanımıza eklenecek.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 15),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: "Örn: Eti Burçak",
+                labelText: "Ürün Adı Giriniz",
+                border: OutlineInputBorder()
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+          
+          // --- KAYDETME BUTONU ---
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty) {
+                // 1. ADIM: İşte burası veriyi senin veritabanına yazar!
+                await _barcodeService.contributeToPool(barcode, name);
+                
+                // 2. ADIM: Ekrandaki formu doldurur
+                setState(() {
+                  _ingredientNameController.text = name;
+                });
+                
+                if (mounted) {
+                  Navigator.pop(context); // Pencereyi kapat
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Harika! Ürün veritabanımıza kaydedildi."),
+                      backgroundColor: Colors.green,
+                    )
+                  );
+                }
+              }
+            },
+            child: const Text("Kaydet ve Paylaş"),
+          ),
+        ],
+      ),
+    );
+  }
+  // --------------------------------
+
   void _searchIngredients(String query) async {
     if (query.isEmpty) {
       setState(() => _searchResults = []);
@@ -65,20 +179,18 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
       }
 
       setState(() => _isLoading = true);
-
       try {
         final currentUser = FirebaseAuth.instance.currentUser;
         if (currentUser == null) throw Exception("Kullanıcı oturumu açmamış.");
 
         String category = _selectedIngredient?.category ?? 'Diğer';
-
         final newItem = PantryItem(
-          id: '', 
+          id: '',
           userId: currentUser.uid,
-          ingredientId: ingredientId, 
+          ingredientId: ingredientId,
           ingredientName: ingredientName,
           quantity: double.parse(_quantityController.text),
-          unit: unit, 
+          unit: unit,
           expirationDate: _selectedExpirationDate,
           createdAt: Timestamp.now(),
           category: category
@@ -88,7 +200,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün kiler'e başarıyla eklendi!")));
-        Navigator.of(context).pop(); 
+        Navigator.of(context).pop();
 
       } catch (e) {
         if (mounted) return;
@@ -99,69 +211,52 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
     }
   }
 
-  // --- GÜNCELLENMİŞ GÖRÜNTÜ İŞLEME ---
   Future<void> _processImage(ImageSource source) async {
-    // 1. Resmi Seç
     final imagePath = await _ocrService.pickImage(source);
-    
     if (imagePath != null && mounted) {
-      // 2. Yükleniyor Dialogu
       showDialog(
         context: context,
-        barrierDismissible: false, 
+        barrierDismissible: false,
         builder: (_) => Dialog(
           backgroundColor: Theme.of(context).cardTheme.color,
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
-              mainAxisSize: MainAxisSize.min, 
+              mainAxisSize: MainAxisSize.min,
               children: [
                 CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                 const SizedBox(height: 20),
                 Text("Cyber Chef Fişi Okuyor...", style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
-                const SizedBox(height: 8),
-                Text("Gıda ürünleri ayıklanıyor...", style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
               ],
             ),
           ),
         ),
       );
-
       try {
-        // 3. HİBRİT OCR SERVİSİNE GÖNDER
         final scannedData = await _ocrService.textToIngredients(imagePath);
+        if (mounted) Navigator.of(context).pop();
+        if (!mounted) return;
 
-  if (mounted) Navigator.of(context).pop(); 
-  if (!mounted) return;
-
-  // Kontrol değişti: scannedData boş mu diye bakıyoruz, items var mı diye bakıyoruz
-  if (scannedData.isNotEmpty && scannedData['items'] != null && (scannedData['items'] as List).isNotEmpty) {
-    
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        // Parametre adı değişti: scannedData
-        builder: (context) => ScannedProductsScreen(scannedData: scannedData),
-      ),
-    );
-  } else {
-          // 5. Başarısızsa Uyarı Ver
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text("Fiş okunamadı veya gıda ürünü bulunamadı. Lütfen daha net bir fotoğraf çekin."), 
-              backgroundColor: Theme.of(context).colorScheme.error
+        if (scannedData.isNotEmpty && scannedData['items'] != null && (scannedData['items'] as List).isNotEmpty) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ScannedProductsScreen(scannedData: scannedData),
             ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: const Text("Gıda ürünü bulunamadı."), backgroundColor: Theme.of(context).colorScheme.error),
           );
         }
       } catch (e) {
         if (mounted) Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("İşlem Hatası: $e"), backgroundColor: Theme.of(context).colorScheme.error),
+          SnackBar(content: Text("Hata: $e"), backgroundColor: Theme.of(context).colorScheme.error),
         );
       }
     }
   }
 
-  // --- SEÇİM MENÜSÜ (BOTTOM SHEET) ---
   void _showImageSourceSheet() {
     final colorScheme = Theme.of(context).colorScheme;
     showModalBottomSheet(
@@ -177,29 +272,14 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
               Text("Fiş Yükleme Yöntemi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
               const SizedBox(height: 20),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle),
-                  child: Icon(Icons.camera_alt, color: colorScheme.primary),
-                ),
-                title: Text("Kamerayı Aç", style: TextStyle(color: colorScheme.onSurface)),
-                onTap: () {
-                  Navigator.pop(context); 
-                  _processImage(ImageSource.camera); 
-                },
+                leading: const Icon(Icons.camera_alt, color: Colors.blue),
+                title: const Text("Kamera"),
+                onTap: () { Navigator.pop(context); _processImage(ImageSource.camera); },
               ),
-              const Divider(),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.photo_library, color: Colors.purpleAccent),
-                ),
-                title: Text("Galeriden Seç", style: TextStyle(color: colorScheme.onSurface)),
-                onTap: () {
-                  Navigator.pop(context); 
-                  _processImage(ImageSource.gallery); 
-                },
+                leading: const Icon(Icons.photo_library, color: Colors.purple),
+                title: const Text("Galeri"),
+                onTap: () { Navigator.pop(context); _processImage(ImageSource.gallery); },
               ),
             ],
           ),
@@ -211,7 +291,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(title: const Text("Ürün Ekle")),
       body: _isLoading
@@ -222,7 +301,39 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
-                    // ... (Manuel Ekleme Kısımları Aynı) ...
+                    // --- ÜST BUTONLAR GRUBU ---
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _showImageSourceSheet,
+                            icon: const Icon(Icons.receipt_long),
+                            label: const Text("Fiş Tara"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple.shade100,
+                              foregroundColor: Colors.purple.shade900,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _scanBarcode, // <--- BARKOD BUTONU
+                            icon: const Icon(Icons.qr_code_2),
+                            label: const Text("Barkod"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade100,
+                              foregroundColor: Colors.blue.shade900,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ... Mevcut form alanları (İsim, Miktar vs.) ...
                     TextFormField(
                       controller: _ingredientNameController,
                       style: TextStyle(color: colorScheme.onSurface),
@@ -243,12 +354,10 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                             : null,
                       ),
                       onChanged: _searchIngredients,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return "Lütfen malzeme adını girin.";
-                        return null;
-                      },
+                      validator: (value) => value!.isEmpty ? "Lütfen malzeme adını girin." : null,
                     ),
-                    
+
+                    // Arama Sonuçları Listesi
                     if (_searchResults.isNotEmpty && _selectedIngredient == null)
                       Container(
                         height: 150,
@@ -269,7 +378,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                                 setState(() {
                                   _selectedIngredient = ingredient;
                                   _ingredientNameController.text = ingredient.name;
-                                  _searchResults = []; 
+                                  _searchResults = [];
                                 });
                               },
                             );
@@ -277,8 +386,9 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         ),
                       ),
                     
+                    // Yeni Ekleme Butonu (Eğer veritabanında yoksa)
                     if (_ingredientNameController.text.isNotEmpty && _selectedIngredient == null && _searchResults.isEmpty)
-                      Padding(
+                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
                         child: ElevatedButton.icon(
                           onPressed: () async {
@@ -289,7 +399,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                               if (!context.mounted) return;
                               setState(() {
                                 _selectedIngredient = newIngredient; 
-                                _searchResults = []; 
+                                _searchResults = [];
                               });
                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yeni malzeme veritabanına eklendi.")));
                             }
@@ -309,10 +419,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         labelText: "Miktar (${_selectedIngredient?.unit ?? 'adet'})",
                         prefixIcon: const Icon(Icons.numbers),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return "Lütfen miktarı girin.";
-                        return null;
-                      },
+                      validator: (value) => value!.isEmpty ? "Lütfen miktarı girin." : null,
                     ),
                     
                     const SizedBox(height: 16),
@@ -334,25 +441,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                       icon: const Icon(Icons.save),
                       label: const Text("Kilerime Ekle"),
                       style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
-                    ),
-                    
-                    const SizedBox(height: 30),
-                    const Divider(),
-                    
-                    const SizedBox(height: 10),
-                    const Text("Toplu Ekleme Seçenekleri", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
-                    const SizedBox(height: 10),
-
-                    // --- FİŞ TARA BUTONU (MENÜ AÇAR) ---
-                    ElevatedButton.icon(
-                      onPressed: _showImageSourceSheet, 
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text("Fiş Tara (Kamera / Galeri)"),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
-                        backgroundColor: Colors.lightGreen, 
-                        foregroundColor: Colors.white,
-                      ),
                     ),
                   ],
                 ),

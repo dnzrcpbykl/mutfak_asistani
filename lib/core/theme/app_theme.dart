@@ -112,8 +112,8 @@ class AppTheme {
         backgroundColor: darkBackground,
         indicatorColor: neonCyan.withOpacity(0.2),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        iconTheme: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
             return const IconThemeData(color: neonCyan);
           }
           return const IconThemeData(color: Colors.grey);
@@ -211,8 +211,8 @@ class AppTheme {
         backgroundColor: Colors.white,
         indicatorColor: neonCyan.withOpacity(0.3),
         surfaceTintColor: Colors.white,
-        iconTheme: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
             return const IconThemeData(color: Colors.black);
           }
           return const IconThemeData(color: Colors.grey);

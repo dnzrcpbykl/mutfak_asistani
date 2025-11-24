@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // <--- EKLENDİ
 import '../../core/models/recipe.dart';
 
 class CookingModeScreen extends StatefulWidget {
@@ -19,38 +20,39 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   @override
   void initState() {
     super.initState();
-    // Tarifi akıllıca adımlara bölüyoruz
+    // 1. Ekranın kapanmasını engelle (Wakelock Aç)
+    WakelockPlus.enable(); 
+    
+    // 2. Tarifi akıllıca adımlara böl
     _steps = _parseInstructions(widget.recipe.instructions);
   }
 
-  // --- DÜZELTİLEN BÖLÜM: AKILLI AYRIŞTIRICI ---
+  @override
+  void dispose() {
+    // 3. Sayfadan çıkınca ekran normale dönsün (Wakelock Kapat)
+    WakelockPlus.disable();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // Akıllı Ayrıştırıcı (Adımları bölme)
   List<String> _parseInstructions(String text) {
     // 1. Önce numaralandırma var mı bak (1. Adım, 2. Adım...)
-    // Regex: Sayı, nokta ve boşluk (Örn: "1. ")
     final numberSplit = text.split(RegExp(r'\d+\.\s+'));
-    
-    // İlk eleman bazen boş gelir (metin "1." ile başlıyorsa), onu temizle
     List<String> cleanList = numberSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
+    
+    if (cleanList.length > 1) return cleanList;
 
-    // Eğer numaralandırma işe yaradıysa ve birden fazla adım çıktıysa bunu döndür
-    if (cleanList.length > 1) {
-      return cleanList;
-    }
-
-    // 2. Numaralandırma yoksa, satır satır (\n) bölmeyi dene
+    // 2. Satır satır (\n) bölmeyi dene
     final lineSplit = text.split('\n');
     cleanList = lineSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
     
-    if (cleanList.length > 1) {
-      return cleanList;
-    }
+    if (cleanList.length > 1) return cleanList;
 
-    // 3. O da yoksa cümle cümle (. ) bölmeyi dene
-    // Son çare: Nokta ve boşluk gördüğü yerden böler.
+    // 3. Cümle cümle (. ) bölmeyi dene
     final sentenceSplit = text.split('. ');
     cleanList = sentenceSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
 
-    // Hiçbiri olmazsa metni tek parça döndür ama en azından array olsun
     return cleanList.isNotEmpty ? cleanList : [text];
   }
 
@@ -65,6 +67,16 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        // Wakelock aktif olduğu için kullanıcıya küçük bir ikonla bilgi verebiliriz
+        actions: const [
+          Tooltip(
+            message: "Ekran açık kalacak",
+            child: Padding(
+              padding: EdgeInsets.only(right: 16.0),
+              child: Icon(Icons.wb_sunny_outlined, size: 20),
+            ),
+          )
+        ],
       ),
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Column(
@@ -77,7 +89,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             minHeight: 6,
           ),
           
-          // --- ORTA KISIM (KAYDIRILABİLİR YAPILDI) ---
+          // --- ORTA KISIM (KAYDIRILABİLİR) ---
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -89,8 +101,6 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
               },
               itemCount: _steps.length,
               itemBuilder: (context, index) {
-                // BURASI DÜZELTİLDİ: Center ve SingleChildScrollView eklendi
-                // Artık metin uzunsa aşağı doğru kaydırılabilecek ve hata vermeyecek.
                 return Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(32.0),
@@ -128,7 +138,6 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
           // --- KONTROL BUTONLARI ---
           Container(
             padding: const EdgeInsets.all(24),
-            // Butonların arkasına hafif bir renk koyalım ki metin aksa bile butonlar net görünsün
             color: theme.scaffoldBackgroundColor, 
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -147,7 +156,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                     ),
                   )
                 else 
-                  const SizedBox(width: 100), // Boşluk tutucu (Düzeni bozmamak için)
+                  const SizedBox(width: 100), // Boşluk tutucu
 
                 // İLERİ / BİTİR BUTONU
                 if (_currentStep < _steps.length - 1)
@@ -155,13 +164,12 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                     onPressed: () {
                       _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
                     },
-                    // Yönlendirmeyi düzeltmek için (Sağ ikon)
-                    icon: const SizedBox.shrink(), // Sol ikonu gizle
-                    label: Row(
-                      children: const [
-                        Text("İleri"),
-                        SizedBox(width: 8),
-                        Icon(Icons.arrow_forward),
+                    icon: const SizedBox.shrink(), // Sol ikonu gizle, sağa koyacağız
+                    label: const Row(
+                      children: [
+                         Text("İleri"),
+                         SizedBox(width: 8),
+                         Icon(Icons.arrow_forward),
                       ],
                     ),
                     style: ElevatedButton.styleFrom(

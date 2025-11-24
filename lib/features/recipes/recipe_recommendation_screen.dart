@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // Provider paketi eklendi
+
+// Modeller
 import '../../core/models/recipe.dart';
-import '../../core/models/pantry_item.dart';
-import '../../core/models/market_price.dart'; 
+import '../../core/models/market_price.dart';
+
+// Servisler (Aksiyonlar için)
 import '../pantry/pantry_service.dart';
-import '../market/market_service.dart'; 
+import '../market/market_service.dart';
 import '../shopping_list/shopping_service.dart';
 import 'recipe_service.dart';
 import 'recipe_importer_service.dart';
-import 'cooking_mode_screen.dart'; // <--- YENİ EKRANI EKLE
+
+// Provider (Veri Yönetimi için)
+import 'recipe_provider.dart';
+
+// Ekranlar
+import 'cooking_mode_screen.dart';
+import '../../core/widgets/recipe_loading_skeleton.dart';
 
 class RecipeRecommendationScreen extends StatefulWidget {
   const RecipeRecommendationScreen({super.key});
@@ -17,6 +27,7 @@ class RecipeRecommendationScreen extends StatefulWidget {
 }
 
 class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen> {
+  // Veri çekme dışındaki EYLEMLER için servisleri burada tutuyoruz
   final PantryService _pantryService = PantryService();
   final RecipeService _recipeService = RecipeService();
   final MarketService _marketService = MarketService();
@@ -24,25 +35,51 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
   final RecipeImporterService _importer = RecipeImporterService();
 
   @override
+  void initState() {
+    super.initState();
+    // Ekran açılır açılmaz Provider'a "Verileri Getir" emrini veriyoruz.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+    
+    // Provider'ı dinliyoruz (Veri değişince burası tetiklenir)
+    final recipeProvider = Provider.of<RecipeProvider>(context);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Ne Pişirsem?"),
         centerTitle: true,
-        automaticallyImplyLeading: false, 
+        automaticallyImplyLeading: false,
+        actions: [
+          // Manuel Yenileme Butonu
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Listeyi Yenile",
+            onPressed: () {
+              recipeProvider.fetchAndCalculateRecommendations();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Liste güncelleniyor...")),
+              );
+            },
+          ),
+        ],
       ),
       
+      // --- ŞEFE SOR (AI) BUTONU ---
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: colorScheme.primary, 
-        foregroundColor: colorScheme.onPrimary, 
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         elevation: 4,
         icon: const Icon(Icons.auto_awesome),
         label: const Text("Şefe Sor (AI)", style: TextStyle(fontWeight: FontWeight.bold)),
         onPressed: () async {
+          // Kileri anlık kontrol et (AI için)
           final pantrySnapshot = await _pantryService.pantryRef.get();
           final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();
 
@@ -53,11 +90,12 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           }
 
           if (!context.mounted) return;
+          // Yükleniyor Dialogu
           showDialog(
             context: context,
             barrierDismissible: false,
             builder: (_) => Dialog(
-              backgroundColor: theme.cardTheme.color, 
+              backgroundColor: theme.cardTheme.color,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: colorScheme.primary, width: 1)),
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -76,10 +114,17 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           );
 
           try {
+            // 1. AI Tarif Üretsin ve Veritabanına Yazsın
             await _importer.generateRecipesFromPantry(myIngredients);
+            
             if (!context.mounted) return;
-            Navigator.pop(context); 
-            setState(() {}); 
+            Navigator.pop(context); // Dialogu kapat
+
+            // 2. ÖNEMLİ: Provider'ı tetikle ki yeni gelen tarifler ekranda görünsün
+            recipeProvider.fetchAndCalculateRecommendations();
+
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
+
           } catch (e) {
             if (!mounted) return;
             Navigator.pop(context);
@@ -88,73 +133,62 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         },
       ),
 
-      body: StreamBuilder<List<PantryItem>>(
-        stream: _pantryService.getPantryItems(),
-        builder: (context, pantrySnapshot) {
-          if (!pantrySnapshot.hasData) return Center(child: CircularProgressIndicator(color: colorScheme.primary));
+      // --- GÖVDE (Provider Durumuna Göre) ---
+      body: recipeProvider.isLoading
+          ? const RecipeLoadingSkeleton() // ARTIK SHIMMER KULLANIYORUZ
+          : recipeProvider.error != null
+              ? Center(child: Text(recipeProvider.error!, style: TextStyle(color: colorScheme.error)))
+              : _buildContent(context, recipeProvider),
+    );
+  }
 
-          final myPantry = pantrySnapshot.data!;
+  // İçeriği Oluşturan Metot
+  Widget _buildContent(BuildContext context, RecipeProvider provider) {
+    final recommendations = provider.recommendations;
+    final allPrices = provider.allPrices;
+    final colorScheme = Theme.of(context).colorScheme;
 
-          return FutureBuilder<List<dynamic>>(
-            future: Future.wait([
-              _recipeService.getRecipes(),      
-              _marketService.getAllPrices(),    
-            ]),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: colorScheme.primary));
-              if (!snapshot.hasData) return Center(child: Text("Veri yüklenemedi.", style: TextStyle(color: colorScheme.onSurface)));
+    if (recommendations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.restaurant_menu, size: 80, color: colorScheme.onSurface.withOpacity(0.2)),
+            const SizedBox(height: 20),
+            Text(
+              "Henüz uygun tarif yok.\nŞefe sorarak menü oluştur!", 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 16)
+            ),
+          ],
+        ),
+      );
+    }
 
-              final allRecipes = snapshot.data![0] as List<Recipe>;
-              final allPrices = snapshot.data![1] as List<MarketPrice>;
-              
-              final recommendations = _recipeService.matchRecipes(myPantry, allRecipes);
+    // --- KATEGORİLERE GÖRE GRUPLAMA ---
+    Map<String, List<dynamic>> groupedRecipes = {};
+    final List<String> categoryOrder = ["Çorba", "Ana Yemek", "Aperatif", "Tatlı", "Genel"];
+    
+    for (var item in recommendations) {
+      String cat = item['recipe'].category;
+      if (!categoryOrder.contains(cat)) cat = "Genel";
+      if (!groupedRecipes.containsKey(cat)) groupedRecipes[cat] = [];
+      groupedRecipes[cat]!.add(item);
+    }
 
-              if (recommendations.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.restaurant_menu, size: 80, color: colorScheme.onSurface.withOpacity(0.2)),
-                      const SizedBox(height: 20),
-                      Text("Henüz uygun tarif yok.\nŞefe sorarak menü oluştur!", textAlign: TextAlign.center, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 16)),
-                    ],
-                  ),
-                );
-              }
-
-              // --- KATEGORİLERE GÖRE GRUPLAMA ---
-              Map<String, List<dynamic>> groupedRecipes = {};
-              // Öncelik sırasını biz belirleyelim
-              final List<String> categoryOrder = ["Çorba", "Ana Yemek", "Aperatif", "Tatlı", "Genel"];
-
-              for (var item in recommendations) {
-                String cat = item['recipe'].category;
-                // Eğer bilinmeyen bir kategori gelirse "Genel" yap
-                if (!categoryOrder.contains(cat)) cat = "Genel";
-                
-                if (!groupedRecipes.containsKey(cat)) groupedRecipes[cat] = [];
-                groupedRecipes[cat]!.add(item);
-              }
-
-              return ListView(
-                padding: const EdgeInsets.only(bottom: 80),
-                children: [
-                  for (String cat in categoryOrder)
-                    if (groupedRecipes.containsKey(cat) && groupedRecipes[cat]!.isNotEmpty)
-                      _buildCategorySection(context, cat, groupedRecipes[cat]!, allPrices),
-                ],
-              );
-            },
-          );
-        },
-      ),
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 80),
+      children: [
+        for (String cat in categoryOrder)
+          if (groupedRecipes.containsKey(cat) && groupedRecipes[cat]!.isNotEmpty)
+            _buildCategorySection(context, cat, groupedRecipes[cat]!, allPrices),
+      ],
     );
   }
 
   // Kategori Başlığı ve Altındaki Tarifler
   Widget _buildCategorySection(BuildContext context, String category, List<dynamic> recipes, List<MarketPrice> prices) {
     final colorScheme = Theme.of(context).colorScheme;
-    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -168,7 +202,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             ],
           ),
         ),
-        ...recipes.map((item) => _buildRecipeCard(context, item, prices)).toList(),
+        ...recipes.map((item) => _buildRecipeCard(context, item, prices)),
       ],
     );
   }
@@ -187,9 +221,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     final Recipe recipe = item['recipe'];
     final double matchPercent = item['matchPercentage'];
     final List<String> missing = item['missingIngredients'];
-    
-    // --- YENİ VERİ: ALTERNATİF İPUÇLARI ---
-    final List<String> subTips = item['substitutionTips'] ?? []; 
+    final List<String> subTips = item['substitutionTips'] ?? [];
     
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -241,7 +273,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             matchPercent == 1.0 
                 ? Text("Hazırsın! Başla 🎉", style: TextStyle(color: statusColor))
                 : Text(
-                    // Eğer alternatif varsa ve eksik yoksa "Alternatiflerle Hazır" yazsın
                     (missing.isEmpty && subTips.isNotEmpty) 
                         ? "Alternatiflerle Hazır ✨" 
                         : "${missing.length} eksik malzeme", 
@@ -267,7 +298,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 
-                // --- YENİ: ALTERNATİF MALZEME KUTUSU ---
+                // --- ALTERNATİF MALZEME KUTUSU ---
                 if (subTips.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -291,15 +322,13 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                         const SizedBox(height: 8),
                         ...subTips.map((tip) => Padding(
                           padding: const EdgeInsets.only(bottom: 4.0),
-                          // Markdwon bold desteği olmadığı için basit replace yapıyoruz veya rich text kullanabiliriz
-                          // Basitlik için düz text:
                           child: Text("• ${tip.replaceAll('**', '')}", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.9), fontSize: 13)),
                         )),
                       ],
                     ),
                   ),
-                // ---------------------------------------
 
+                // --- EKSİK MALZEMELER KUTUSU ---
                 if (missing.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -336,7 +365,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                   ),
                 const SizedBox(height: 16),
                 
-                // ... (Geri kalan butonlar ve çipler aynı) ...
+                // --- BİLGİ ETİKETLERİ ---
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -347,6 +376,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                 ),
                 const SizedBox(height: 24),
                 
+                // --- PİŞİRME BUTONU ---
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -379,7 +409,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
 
-  // Stok düşme dialogunu buraya ayırdım (Callback ile çağrılacak)
   void _showConsumeDialog(BuildContext context, Recipe recipe) {
     final colorScheme = Theme.of(context).colorScheme;
     showDialog(
@@ -393,9 +422,15 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
             onPressed: () async {
+              // 1. Stokları düş
               await _pantryService.consumeIngredients(recipe.ingredients);
+              
               if (!context.mounted) return;
-              Navigator.pop(context);
+              Navigator.pop(context); // Dialogu kapat
+
+              // 2. ÖNEMLİ: Kiler değiştiği için listeyi YENİLEMEMİZ lazım
+              Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncellendi!")));
             },
             child: const Text("Evet, Düş"),

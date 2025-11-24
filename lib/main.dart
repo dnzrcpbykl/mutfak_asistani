@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart'; // <--- Provider eklendi
+import 'features/recipes/recipe_provider.dart';
 
 import 'features/auth/login_screen.dart';
 import 'features/home/main_layout.dart';
@@ -13,9 +14,12 @@ void main() async {
   await Firebase.initializeApp();
   
   runApp(
-    // Uygulamayı Provider ile sarmalıyoruz
-    ChangeNotifierProvider(
-      create: (_) => ThemeNotifier(),
+    // Tekil Provider yerine MultiProvider kullanıyoruz
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeNotifier()),
+        ChangeNotifierProvider(create: (_) => RecipeProvider()), // <--- EKLENDİ
+      ],
       child: const MutfakAsistaniApp(),
     ),
   );

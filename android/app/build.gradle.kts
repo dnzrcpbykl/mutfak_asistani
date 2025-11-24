@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.mutfak_asistani"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,10 +23,8 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.mutfak_asistani"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -36,6 +34,13 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            
+            // --- DÜZELTİLEN KISIMLAR (KOTLIN DSL) ---
+            isMinifyEnabled = false      // Groovy'de: minifyEnabled false
+            isShrinkResources = false    // Groovy'de: shrinkResources false
+            
+            // Kotlin'de çift tırnak (") kullanılır, tek tırnak (') hata verir.
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

@@ -29,7 +29,7 @@ class OCRService {
       final headers = {'Content-Type': 'application/json'};
 
       // --- KATI GIDA FİLTRESİ VE KATEGORİ PROMPT'U ---
-      final prompt = '''
+      const prompt = '''
       Bu market fişini analiz et.
       
       GÖREV 1: MARKET TESPİTİ
