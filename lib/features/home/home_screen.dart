@@ -206,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 10),
                   // Kategori Seçimi
                   DropdownButtonFormField<String>(
-                    value: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
+                    initialValue: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
                     decoration: const InputDecoration(labelText: "Kategori"),
                     items: _categories.where((c) => c != "Tümü").map((String category) {
                       return DropdownMenuItem(

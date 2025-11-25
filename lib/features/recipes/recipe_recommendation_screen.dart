@@ -91,8 +91,8 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             // İnternet yoksa hemen dur ve uyar
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Row(
+              const SnackBar(
+                content: Row(
                   children: [
                     Icon(Icons.wifi_off, color: Colors.white),
                     SizedBox(width: 10),
