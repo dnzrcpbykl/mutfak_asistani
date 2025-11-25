@@ -42,34 +42,42 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   }
 
   List<Map<String, dynamic>> _mergeItems(List<dynamic> rawList) {
-    List<Map<String, dynamic>> mergedList = [];
+  List<Map<String, dynamic>> mergedList = [];
+  
+  for (var item in rawList) {
+    String name = item['product_name'] ?? '';
+    String brand = item['brand'] ?? ''; 
+    
+    int existingIndex = mergedList.indexWhere((element) => 
+        element['product_name'] == name && 
+        (element['brand'] ?? '') == brand
+    );
 
-    for (var item in rawList) {
-      String name = item['product_name'] ?? '';
-      // Birleştirirken markaya bakmaya devam edelim ki farklı markalar karışmasın
-      String brand = item['brand'] ?? ''; 
+    if (existingIndex != -1) {
+      double currentAmount = (mergedList[existingIndex]['amount'] as num).toDouble();
+      double newAmount = (item['amount'] as num).toDouble();
       
-      int existingIndex = mergedList.indexWhere((element) => 
-          element['product_name'] == name && 
-          (element['brand'] ?? '') == brand
-      );
+      double currentPrice = (mergedList[existingIndex]['price'] as num?)?.toDouble() ?? 0.0;
+      double newPrice = (item['price'] as num?)?.toDouble() ?? 0.0;
+      
+      // Mevcut paket sayısını al, yoksa 1 kabul et
+      int currentCount = mergedList[existingIndex]['pieceCount'] ?? 1;
 
-      if (existingIndex != -1) {
-        double currentAmount = (mergedList[existingIndex]['amount'] as num).toDouble();
-        double newAmount = (item['amount'] as num).toDouble();
-        
-        // Fiyatı güncelle (Son okunan fiyatı veya ortalamayı alabiliriz, burada sonuncuyu üzerine ekliyoruz)
-        double currentPrice = (mergedList[existingIndex]['price'] as num?)?.toDouble() ?? 0.0;
-        double newPrice = (item['price'] as num?)?.toDouble() ?? 0.0;
+      mergedList[existingIndex]['amount'] = currentAmount + newAmount;
+      mergedList[existingIndex]['price'] = currentPrice + newPrice;
+      
+      // YENİ: Paket sayısını 1 arttır
+      mergedList[existingIndex]['pieceCount'] = currentCount + 1;
 
-        mergedList[existingIndex]['amount'] = currentAmount + newAmount;
-        mergedList[existingIndex]['price'] = currentPrice + newPrice; 
-      } else {
-        mergedList.add(Map<String, dynamic>.from(item));
-      }
+    } else {
+      // İlk defa ekleniyor, pieceCount = 1 olarak başlat
+      var newItem = Map<String, dynamic>.from(item);
+      newItem['pieceCount'] = 1;
+      mergedList.add(newItem);
     }
-    return mergedList;
   }
+  return mergedList;
+}
 
   void _toggleSelectAll(bool? value) {
     setState(() {
@@ -78,64 +86,59 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   }
 
   Future<void> _saveSelectedToPantry() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+  int count = 0;
+  
+  showDialog(
+    context: context, 
+    barrierDismissible: false,
+    builder: (_) => const Center(child: CircularProgressIndicator())
+  );
 
-    int count = 0;
-    
-    showDialog(
-      context: context, 
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator())
-    );
+  for (int i = 0; i < _items.length; i++) {
+    if (_selectedItems[i]) {
+      final itemData = _items[i];
+      String ingredientName = itemData['product_name']; 
+      String? brand = itemData['brand'];
+      double price = (itemData['price'] as num?)?.toDouble() ?? 0.0;
+      
+      // YENİ: Hesaplanan paket sayısını al
+      int pieceCount = itemData['pieceCount'] ?? 1;
 
-    for (int i = 0; i < _items.length; i++) {
-      if (_selectedItems[i]) {
-        final itemData = _items[i];
-        
-        // --- DÜZELTME 1: İSMİ YALIN TUTUYORUZ ---
-        // Artık markayı ismin başına eklemiyoruz.
-        // "Dr. Oetker Kabartma Tozu" -> "Kabartma Tozu" olarak kalıyor.
-        String ingredientName = itemData['product_name']; 
-        String? brand = itemData['brand'];
-        double price = (itemData['price'] as num?)?.toDouble() ?? 0.0;
+      final newItem = PantryItem(
+        id: '',
+        userId: user.uid,
+        ingredientId: 'auto_ocr_${DateTime.now().millisecondsSinceEpoch}_$i',
+        ingredientName: ingredientName,
+        quantity: (itemData['amount'] as num).toDouble(),
+        unit: itemData['unit'] ?? 'adet',
+        expirationDate: _expirationDates[i],
+        createdAt: Timestamp.now(),
+        brand: brand,
+        marketName: _marketName,
+        price: price,
+        category: itemData['category'] ?? 'Diğer',
+        pieceCount: pieceCount, // Model'e gönderiyoruz
+      );
 
-        // 1. KİLERE KAYDET (Kullanıcının stoğu)
-        final newItem = PantryItem(
-          id: '',
-          userId: user.uid,
-          ingredientId: 'auto_ocr_${DateTime.now().millisecondsSinceEpoch}_$i',
-          ingredientName: ingredientName, // Yalın isim
-          quantity: (itemData['amount'] as num).toDouble(),
-          unit: itemData['unit'] ?? 'adet',
-          expirationDate: _expirationDates[i],
-          createdAt: Timestamp.now(),
-          brand: brand, // Marka burada ayrı duruyor
-          marketName: _marketName,
-          price: price,
-          category: itemData['category'] ?? 'Diğer',
-        );
+      await _pantryService.addPantryItem(newItem);
 
-        await _pantryService.addPantryItem(newItem);
-
-        // 2. FİYAT VERİTABANINA KAYDET (Hesaplama için)
-        // "Kabartma Tozu", "MIGROS", 35.00 TL gibi
-        if (price > 0) {
-          await _marketService.addPriceInfo(ingredientName, _marketName, price);
-        }
-
-        count++;
+      if (price > 0) {
+        await _marketService.addPriceInfo(ingredientName, _marketName, price);
       }
+      count++;
     }
-
-    if (!mounted) return;
-    Navigator.pop(context); 
-    Navigator.pop(context); 
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("$count ürün ($_marketName) kaydedildi!"), backgroundColor: Colors.green),
-    );
   }
+
+  if (!mounted) return;
+  Navigator.pop(context); 
+  Navigator.pop(context); 
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text("$count ürün ($_marketName) kaydedildi!"), backgroundColor: Colors.green),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -208,78 +211,84 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
 
           // LİSTE
           Expanded(
-            child: ListView.builder(
-              itemCount: _items.length,
-              itemBuilder: (context, index) {
-                final item = _items[index];
-                final double price = (item['price'] as num?)?.toDouble() ?? 0.0;
+  child: ListView.builder(
+    itemCount: _items.length,
+    itemBuilder: (context, index) {
+      final item = _items[index];
+      final double price = (item['price'] as num?)?.toDouble() ?? 0.0;
+      
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withOpacity(0.5),
+        child: ListTile(
+          leading: Checkbox(
+            value: _selectedItems[index],
+            activeColor: colorScheme.primary,
+            onChanged: (val) => setState(() => _selectedItems[index] = val ?? false),
+          ),
+          
+          title: Text(
+            item['product_name'], 
+            style: TextStyle(fontWeight: FontWeight.bold, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey)
+          ),
+          
+          subtitle: Text(
+            "${item['brand'] ?? 'Markasız'} • ${item['amount']} ${item['unit']}",
+            style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+          ),
+          
+          // --- HATA BURADAYDI, DÜZELTİLDİ ---
+          trailing: SizedBox(
+            width: 90, // Genişliği biraz kıstık ki tarih sığsın
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // FİYAT DÜZELTMESİ:
+                Text(
+                  "${price.toStringAsFixed(2)} TL", // Küsuratı kestik (2.10 TL gibi)
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: _selectedItems[index] ? colorScheme.secondary : Colors.grey
+                  ),
+                  maxLines: 1, // Tek satıra zorla
+                  overflow: TextOverflow.ellipsis, // Sığmazsa ... koy
+                ),
                 
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withOpacity(0.5),
-                  child: ListTile(
-                    leading: Checkbox(
-                      value: _selectedItems[index],
-                      activeColor: colorScheme.primary,
-                      onChanged: (val) => setState(() => _selectedItems[index] = val ?? false),
+                const SizedBox(height: 4),
+                
+                // TARİH SEÇİCİ
+                InkWell(
+                  onTap: _selectedItems[index] ? () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _expirationDates[index],
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) setState(() => _expirationDates[index] = picked);
+                  } : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.withOpacity(0.5)),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    
-                    title: Text(
-                      item['product_name'], // YALIN İSİM GÖRÜNECEK
-                      style: TextStyle(fontWeight: FontWeight.bold, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey)
-                    ),
-                    
-                    subtitle: Text(
-                      // Markayı burada bilgi olarak gösteriyoruz
-                      "${item['brand'] ?? 'Markasız'} • ${item['amount']} ${item['unit']}",
-                      style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
-                    ),
-                    
-                    trailing: SizedBox(
-                      width: 100, 
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            "$price TL",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: _selectedItems[index] ? colorScheme.secondary : Colors.grey
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          InkWell(
-                            onTap: _selectedItems[index] ? () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: _expirationDates[index],
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime(2030),
-                              );
-                              if (picked != null) setState(() => _expirationDates[index] = picked);
-                            } : null,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.withOpacity(0.5)),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                DateFormat('dd/MM/yy').format(_expirationDates[index]),
-                                style: TextStyle(fontSize: 11, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: Text(
+                      DateFormat('dd/MM/yy').format(_expirationDates[index]),
+                      style: TextStyle(fontSize: 11, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey),
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
+        ),
+      );
+    },
+  ),
+),
           
           Padding(
             padding: const EdgeInsets.all(16.0),

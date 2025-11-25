@@ -6,6 +6,7 @@ import '../../core/models/pantry_item.dart';
 
 class RecipeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // --- YENİ: MUADİL (ALTERNATİF) TABLOSU ---
   // Sol taraf: Tarifteki İstek -> Sağ taraf: Kilerde olabilecek alternatifler
@@ -49,7 +50,16 @@ class RecipeService {
   };
 
   Future<List<Recipe>> getRecipes() async {
-    final snapshot = await _firestore.collection('recipes').get();
+    final user = _auth.currentUser;
+    if (user == null) return []; // Kullanıcı yoksa boş liste dön
+
+    // Artık 'recipes' yerine 'users/{uid}/suggestions' yoluna bakıyoruz
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('suggestions')
+        .get();
+
     return snapshot.docs.map((doc) => Recipe.fromFirestore(doc)).toList();
   }
 

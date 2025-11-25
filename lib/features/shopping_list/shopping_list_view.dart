@@ -1,3 +1,4 @@
+// lib/features/shopping_list/shopping_list_view.dart
 import 'package:flutter/material.dart';
 import 'shopping_service.dart';
 import '../../core/models/shopping_item.dart';
@@ -20,7 +21,6 @@ class _ShoppingListViewState extends State<ShoppingListView> {
     if (text.isEmpty) return;
 
     final basarili = await _service.addItem(text);
-
     if (!mounted) return;
 
     if (basarili) {
@@ -98,7 +98,8 @@ class _ShoppingListViewState extends State<ShoppingListView> {
                     )
                   : ListView.builder(
                       itemCount: items.length,
-                      padding: const EdgeInsets.only(bottom: 80),
+                      // Alt kısımdaki kutunun arkasında kalmasın diye boşluk bırakıyoruz
+                      padding: const EdgeInsets.only(bottom: 100), 
                       itemBuilder: (context, index) {
                         final item = items[index];
                         // Animasyon eklenmiş Liste Elemanı
@@ -133,52 +134,52 @@ class _ShoppingListViewState extends State<ShoppingListView> {
                             onTap: () => _service.toggleStatus(item.id, item.isCompleted),
                           ),
                         )
-                        .animate(delay: (index * 50).ms) // Her eleman 50ms gecikmeli gelsin (Domino etkisi)
-                        .slideX(begin: 1, end: 0, curve: Curves.easeOutQuad) // Sağdan sola kay
-                        .fadeIn(); // Görünür ol
+                        .animate(delay: (index * 50).ms) 
+                        .slideX(begin: 1, end: 0, curve: Curves.easeOutQuad) 
+                        .fadeIn();
                       },
                     ),
             ),
 
-            // --- 3. HIZLI EKLEME KUTUSU ---
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-              decoration: BoxDecoration(
-                // KUTU RENGİ ÖNEMLİ: Light'ta Beyaz, Dark'ta Koyu Gri
-                color: theme.cardTheme.color, 
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, -2)),
-                ],
-                // Sadece üstte ince bir çizgi olsun
-                border: Border(top: BorderSide(color: isDark ? Colors.white10 : Colors.grey.shade200))
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      textCapitalization: TextCapitalization.sentences,
-                      // YAZI RENGİ: Light'ta Siyah, Dark'ta Beyaz
-                      style: TextStyle(color: colorScheme.onSurface), 
-                      decoration: InputDecoration(
-                        hintText: "Hızlı ürün ekle (Örn: Ekmek)",
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        border: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        icon: Icon(Icons.add_shopping_cart, color: colorScheme.primary),
-                        // AppTheme'de inputlara fill vermiştik, burada istemiyoruz çünkü zaten kutunun içindeyiz
-                        filled: false, 
+            // --- 3. HIZLI EKLEME KUTUSU (SAFE AREA EKLENDİ) ---
+            // Bu widget, alt navigasyon çubuğunun (Home/Back tuşları) üzerine binmeyi engeller.
+            SafeArea(
+              top: false, // Üst tarafı etkilemesin
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                decoration: BoxDecoration(
+                  color: theme.cardTheme.color, 
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, -2)),
+                  ],
+                  border: Border(top: BorderSide(color: isDark ? Colors.white10 : Colors.grey.shade200))
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: TextStyle(color: colorScheme.onSurface), 
+                        decoration: InputDecoration(
+                          hintText: "Hızlı ürün ekle (Örn: Ekmek)",
+                          hintStyle: const TextStyle(color: Colors.grey),
+                          border: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          icon: Icon(Icons.add_shopping_cart, color: colorScheme.primary),
+                          filled: false, 
+                        ),
+                        onSubmitted: (_) => _urunEkle(),
                       ),
-                      onSubmitted: (_) => _urunEkle(),
                     ),
-                  ),
-                  
-                  IconButton(
-                    icon: Icon(Icons.send, color: colorScheme.primary, size: 28),
-                    onPressed: _urunEkle,
-                  ),
-                ],
+                    
+                    IconButton(
+                      icon: Icon(Icons.send, color: colorScheme.primary, size: 28),
+                      onPressed: _urunEkle,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

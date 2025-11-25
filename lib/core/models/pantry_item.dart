@@ -1,3 +1,5 @@
+// lib/core/models/pantry_item.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PantryItem {
@@ -12,10 +14,10 @@ class PantryItem {
   final String? brand;
   final String? marketName;
   final double? price;
+  final String category;
   
-  // --- YENİ EKLENEN ALAN ---
-  final String category; // Örn: "Süt Ürünleri", "Bakliyat"
-  // -------------------------
+  // YENİ ALAN: Bu ürün kaç paketten oluşuyor? (Örn: 3)
+  final int pieceCount; 
 
   PantryItem({
     required this.id,
@@ -29,7 +31,8 @@ class PantryItem {
     this.brand,
     this.marketName,
     this.price,
-    this.category = 'Diğer', // Varsayılan değer
+    this.category = 'Diğer',
+    this.pieceCount = 1, // Varsayılan 1 paket
   });
 
   factory PantryItem.fromFirestore(DocumentSnapshot doc) {
@@ -46,8 +49,9 @@ class PantryItem {
       brand: data['brand'],
       marketName: data['marketName'],
       price: (data['price'] as num?)?.toDouble(),
-      // Kategori verisini al, yoksa 'Diğer' yap
       category: data['category'] ?? 'Diğer',
+      // Firestore'dan okurken, eski kayıtlarda bu alan yoksa 1 kabul et
+      pieceCount: data['pieceCount'] ?? 1, 
     );
   }
 
@@ -63,8 +67,9 @@ class PantryItem {
       'brand': brand,
       'marketName': marketName,
       'price': price,
-      // Kaydederken ekle
       'category': category,
+      // Veritabanına kaydet
+      'pieceCount': pieceCount, 
     };
   }
 }

@@ -1,23 +1,43 @@
+// lib/features/recipes/recipe_importer_service.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Auth eklendi
 import '../../secrets.dart';
 
 class RecipeImporterService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Kullanıcıyı tanımak için
 
-  // 1. Önceki Tarifleri Temizle
+  // Yardımcı: O anki kullanıcının tarif önerileri koleksiyonunu getirir
+  CollectionReference? _getUserRecipeCollection() {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    // Örnek Yol: users/USER_ID_123/suggestions
+    return _firestore.collection('users').doc(user.uid).collection('suggestions');
+  }
+
+  // 1. Önceki Şahsi Tarifleri Temizle
   Future<void> _clearOldRecipes() async {
-    final snapshot = await _firestore.collection('recipes').get();
+    final collectionRef = _getUserRecipeCollection();
+    if (collectionRef == null) return;
+
+    final snapshot = await collectionRef.get();
+    
+    // Batch (Toplu işlem) ile silme daha performanslıdır
+    final batch = _firestore.batch();
     for (var doc in snapshot.docs) {
-      await doc.reference.delete();
+      batch.delete(doc.reference);
     }
-    debugPrint("🧹 Eski tarifler temizlendi.");
+    await batch.commit();
+    
+    debugPrint("🧹 Kullanıcının eski önerileri temizlendi.");
   }
 
   // 2. Kilerdeki Malzemelere Göre Tarif Üret
   Future<void> generateRecipesFromPantry(List<String> myIngredients) async {
+    // Önce kullanıcının kendi eski önerilerini temizle
     await _clearOldRecipes();
 
     if (myIngredients.isEmpty) {
@@ -33,8 +53,7 @@ class RecipeImporterService {
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=$apiKey');
 
     final headers = {'Content-Type': 'application/json'};
-
-    // --- PROMPT GÜNCELLEMESİ ---
+    
     final prompt = '''
       Sen Türk mutfağına hakim uzman bir şefsin.
       Elimdeki malzemeler: [$ingredientsText]
@@ -43,7 +62,8 @@ class RecipeImporterService {
       Bu malzemelerin ÇOĞUNLUĞUNU kullanarak yapılabilecek en iyi 5-6 tarifi ver.
       
       ÖNEMLİ KURAL:
-      Malzeme listesinde ASLA marka adı kullanma. (Örn: "Dr. Oetker Kabartma Tozu" yazma, sadece "Kabartma Tozu" yaz. "Pınar Süt" yazma, "Süt" yaz).
+      Malzeme listesinde ASLA marka adı kullanma.
+      (Örn: "Dr. Oetker Kabartma Tozu" yazma, sadece "Kabartma Tozu" yaz. "Pınar Süt" yazma, "Süt" yaz).
       
       ÖNCELİK SIRALAMASI:
       1. Çorbalar
@@ -56,7 +76,7 @@ class RecipeImporterService {
         {
           "name": "Yemek Adı",
           "description": "Kısa açıklama",
-          "ingredients": ["Malzeme 1", "Malzeme 2"], // Markasız yalın isimler!
+          "ingredients": ["Malzeme 1", "Malzeme 2"], 
           "instructions": "Yapılış...",
           "prepTime": 30,
           "difficulty": "Kolay", 
@@ -74,18 +94,25 @@ class RecipeImporterService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        if (data['candidates'] == null || (data['candidates'] as List).isEmpty) return;
+        
         String content = data['candidates'][0]['content']['parts'][0]['text'];
         
-        // JSON Temizliği
         final jsonMatch = RegExp(r'\[\s*\{.*?\}\s*\]', dotAll: true).firstMatch(content);
 
         if (jsonMatch != null) {
           String cleanJson = jsonMatch.group(0)!;
           List<dynamic> recipesJson = jsonDecode(cleanJson);
           
+          final collectionRef = _getUserRecipeCollection();
+          if (collectionRef == null) return;
+
           final batch = _firestore.batch();
+          
           for (var item in recipesJson) {
-            final docRef = _firestore.collection('recipes').doc();
+            // Kullanıcının kendi 'suggestions' koleksiyonuna ekle
+            final docRef = collectionRef.doc(); 
+            
             batch.set(docRef, {
               'name': item['name'],
               'description': item['description'],
@@ -93,11 +120,12 @@ class RecipeImporterService {
               'instructions': item['instructions'],
               'prepTime': item['prepTime'],
               'difficulty': item['difficulty'],
-              'category': item['category'], // Kategori artık standart
+              'category': item['category'],
+              'createdAt': FieldValue.serverTimestamp(), // Tarih de ekleyelim
             });
           }
           await batch.commit(); 
-          debugPrint("✅ Şef ${recipesJson.length} tarif önerdi!");
+          debugPrint("✅ Şef ${recipesJson.length} tarif önerdi (Kullanıcıya özel)!");
         }
       } else {
         throw Exception("API Hatası: ${response.statusCode}");

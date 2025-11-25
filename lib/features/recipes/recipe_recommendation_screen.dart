@@ -18,6 +18,7 @@ import 'recipe_provider.dart';
 // Ekranlar
 import 'cooking_mode_screen.dart';
 import '../../core/widgets/recipe_loading_skeleton.dart';
+import 'dart:io';
 
 class RecipeRecommendationScreen extends StatefulWidget {
   const RecipeRecommendationScreen({super.key});
@@ -79,6 +80,30 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         icon: const Icon(Icons.auto_awesome),
         label: const Text("Şefe Sor (AI)", style: TextStyle(fontWeight: FontWeight.bold)),
         onPressed: () async {
+          try {
+    // 1. Önce basit bir internet kontrolü (Google'a ping at)
+    // Bu, harici paket kullanmadan internet var mı diye bakmanın en basit yoludur.
+            final result = await InternetAddress.lookup('google.com');
+            if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+              // İnternet var, devam et...
+            }
+          } on SocketException catch (_) {
+            // İnternet yoksa hemen dur ve uyar
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(Icons.wifi_off, color: Colors.white),
+                    SizedBox(width: 10),
+                    Text("İnternet bağlantısı yok! Şef çalışamıyor."),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+              )
+            );
+            return; // Fonksiyondan çık
+          }
           // Kileri anlık kontrol et (AI için)
           final pantrySnapshot = await _pantryService.pantryRef.get();
           final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();

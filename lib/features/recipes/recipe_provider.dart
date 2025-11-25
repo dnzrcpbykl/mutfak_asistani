@@ -1,5 +1,7 @@
+// lib/features/recipes/recipe_provider.dart
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Bu import eksik olabilir, ekleyelim
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/models/recipe.dart';
 import '../../core/models/market_price.dart';
 import '../../core/models/pantry_item.dart';
@@ -20,7 +22,7 @@ class RecipeProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
-  // Getter metodları
+  // Getter metodları (Dışarıdan okumak için)
   List<Map<String, dynamic>> get recommendations => _recommendations;
   List<MarketPrice> get allPrices => _allPrices;
   bool get isLoading => _isLoading;
@@ -42,27 +44,35 @@ class RecipeProvider extends ChangeNotifier {
 
       _allRecipes = results[0] as List<Recipe>;
       _allPrices = results[1] as List<MarketPrice>;
-      
-      // --- DÜZELTME BURADA YAPILDI ---
-      // Servisimizde "withConverter" olduğu için, gelen veri zaten PantryItem nesnesidir.
-      // Tekrar çevirmeye çalışmak (Map olarak okumaya çalışmak) hataya sebep oluyordu.
-      // Doğrudan .data() diyerek nesneyi alıyoruz.
-      
+
+      // Düzeltme: withConverter kullandığımız için gelen veri zaten PantryItem'dır.
       final pantrySnapshot = results[2] as QuerySnapshot<PantryItem>;
       final pantryItems = pantrySnapshot.docs
-          .map((doc) => doc.data()) // doc.data() zaten PantryItem tipindedir
+          .map((doc) => doc.data()) 
           .toList();
-      // -------------------------------
 
       // 2. Eşleşme mantığını çalıştır
       _recommendations = _recipeService.matchRecipes(pantryItems, _allRecipes);
 
     } catch (e) {
       _error = "Veriler yüklenirken hata oluştu: $e";
-      debugPrint("RecipeProvider Hatası: $e"); // Konsola detaylı hata basar
+      debugPrint("RecipeProvider Hatası: $e");
     } finally {
       _isLoading = false;
-      notifyListeners(); 
+      notifyListeners();
     }
+  }
+
+  // --- YENİ EKLENEN FONKSİYON ---
+  // Kullanıcı çıkış yaptığında tüm hafızayı temizler
+  void clearData() {
+    _allRecipes = [];
+    _allPrices = [];
+    _recommendations = [];
+    _error = null;
+    _isLoading = false;
+    
+    // UI'ya listenin boşaldığını haber ver
+    notifyListeners();
   }
 }

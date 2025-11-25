@@ -1,9 +1,9 @@
 // lib/features/pantry/pantry_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class PantryService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -58,15 +58,30 @@ class PantryService {
     await pantryRef.doc(itemId).delete();
   }
   
-  // Kilerdeki bir ürünün miktarını günceller
+  // --- EKSİK OLAN FONKSİYON 1: Sadece Miktar Güncelleme ---
   Future<void> updatePantryItemQuantity(String itemId, double newQuantity) async {
     await pantryRef.doc(itemId).update({'quantity': newQuantity});
   }
 
-  // ... önceki kodların altı ...
+  // --- EKSİK OLAN FONKSİYON 2: Detaylı Düzenleme (Edit Ekranı İçin) ---
+  Future<void> updatePantryItemDetails({
+    required String itemId,
+    required String name,
+    required double quantity,
+    required String unit,
+    required DateTime? expirationDate,
+    required String category,
+  }) async {
+    await pantryRef.doc(itemId).update({
+      'ingredientName': name,
+      'quantity': quantity,
+      'unit': unit,
+      'expirationDate': expirationDate != null ? Timestamp.fromDate(expirationDate) : null,
+      'category': category,
+    });
+  }
 
-  // YENİ: Tarifteki malzemeleri kilerden düşme fonksiyonu
-  // ingredientNames: Tarifin içindeki malzeme listesi (Örn: ["Domates", "Yumurta"])
+  // Tarifteki malzemeleri kilerden düşme fonksiyonu
   Future<void> consumeIngredients(List<String> ingredientNames) async {
     // 1. Kilerdeki tüm ürünleri getir
     final pantrySnapshot = await pantryRef.get();
@@ -74,18 +89,17 @@ class PantryService {
 
     // 2. Her bir tarif malzemesi için kileri kontrol et
     for (String ingredientName in ingredientNames) {
-      // İsmi eşleşen ürünü bul (Büyük/küçük harf duyarsız)
       try {
         final itemToUpdate = pantryItems.firstWhere(
           (item) => item.ingredientName.trim().toLowerCase() == ingredientName.trim().toLowerCase()
         );
-
+        
         // 3. Miktarı Düşür
         if (itemToUpdate.quantity > 1) {
-          // 1'den fazlaysa, 1 azalt (Şimdilik varsayılan 1 birim düşüyoruz)
+          // 1'den fazlaysa, 1 azalt
           await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1);
         } else {
-          // 1 veya daha azsa, ürünü tamamen sil (Bitti)
+          // 1 veya daha azsa, ürünü tamamen sil
           await deletePantryItem(itemToUpdate.id);
         }
       } catch (e) {

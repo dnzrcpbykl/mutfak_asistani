@@ -1,8 +1,8 @@
 // lib/features/auth/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Veritabanı için gerekli
-import 'package:intl/intl.dart'; // Tarih formatı için
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../home/main_layout.dart'; 
 
 class LoginScreen extends StatefulWidget {
@@ -13,8 +13,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // Mod Kontrolü (Giriş mi Kayıt mı?)
-  bool _isLogin = true; 
+  bool _isLogin = true;
   bool _isLoading = false;
+  
+  // --- YENİ: Hata Mesajını Ekranda Tutmak İçin Değişken ---
+  String? _errorMessage; 
 
   // Form Kontrolcüleri
   final _emailController = TextEditingController();
@@ -22,9 +25,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameController = TextEditingController();
   final _surnameController = TextEditingController();
   final _usernameController = TextEditingController();
-  final _dobController = TextEditingController(); // Doğum tarihi (Görsel için)
+  final _dobController = TextEditingController();
   
-  DateTime? _selectedDate; // Doğum tarihi (Veri için)
+  DateTime? _selectedDate;
 
   // --- TARİH SEÇİCİ ---
   Future<void> _selectDate(BuildContext context) async {
@@ -34,7 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
-        // Takvim temasını da uygulamaya uyduralım
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: Theme.of(context).colorScheme,
@@ -53,25 +55,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // --- ANA İŞLEM FONKSİYONU ---
   Future<void> _submitForm() async {
-    // 1. Basit Validasyonlar
+    // 1. Her denemede önce eski hatayı temizle
+    setState(() {
+      _errorMessage = null; 
+    });
+
+    // 2. Basit Validasyonlar
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      _showError("E-posta ve şifre zorunludur.");
+      setState(() => _errorMessage = "E-posta ve şifre zorunludur.");
       return;
     }
 
     if (!_isLogin) {
-      // Kayıt modundaysak ek kontroller
       if (_nameController.text.isEmpty || 
           _surnameController.text.isEmpty || 
           _usernameController.text.isEmpty || 
           _selectedDate == null) {
-        _showError("Lütfen tüm alanları doldurun.");
+        setState(() => _errorMessage = "Lütfen tüm alanları eksiksiz doldurun.");
         return;
       }
     }
 
     setState(() => _isLoading = true);
-
     try {
       if (_isLogin) {
         // --- GİRİŞ YAPMA ---
@@ -81,20 +86,18 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       } else {
         // --- KAYIT OLMA ---
-        // 1. Auth'a Kayıt
         final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
-
-        // 2. Firestore'a Ek Bilgileri Kaydet
+        // Firestore'a Ek Bilgileri Kaydet
         if (userCredential.user != null) {
           await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
             'name': _nameController.text.trim(),
             'surname': _surnameController.text.trim(),
             'username': _usernameController.text.trim(),
             'email': _emailController.text.trim(),
-            'birthDate': Timestamp.fromDate(_selectedDate!), // Timestamp olarak kaydet
+            'birthDate': Timestamp.fromDate(_selectedDate!),
             'createdAt': FieldValue.serverTimestamp(),
           });
         }
@@ -105,38 +108,37 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const MainLayout()),
       );
-
     } on FirebaseAuthException catch (e) {
       String message = "Bir hata oluştu.";
-      if (e.code == 'user-not-found') {
-        message = "Kullanıcı bulunamadı.";
-      // ignore: curly_braces_in_flow_control_structures
-      } else if (e.code == 'wrong-password') message = "Şifre hatalı.";
-      // ignore: curly_braces_in_flow_control_structures
-      else if (e.code == 'email-already-in-use') message = "Bu e-posta zaten kullanımda.";
-      else if (e.code == 'weak-password') message = "Şifre çok zayıf.";
       
-      _showError(message);
+      // Hata mesajlarını tek bir çatı altında topluyoruz
+      if (e.code == 'user-not-found' || 
+          e.code == 'wrong-password' || 
+          e.code == 'invalid-credential') {
+        message = "E-posta veya şifre yanlıştır.";
+      } 
+      else if (e.code == 'email-already-in-use') {
+        message = "Bu e-posta zaten kullanımda.";
+      } 
+      else if (e.code == 'weak-password') {
+        message = "Şifre çok zayıf.";
+      }
+      else if (e.code == 'invalid-email') {
+        message = "Geçersiz e-posta formatı.";
+      }
+      
+      // SnackBar yerine değişkeni güncelliyoruz
+      setState(() => _errorMessage = message);
+      
     } catch (e) {
-      _showError("Hata: $e");
+      setState(() => _errorMessage = "Beklenmedik bir hata: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message), 
-        backgroundColor: Theme.of(context).colorScheme.error
-      )
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Tema verileri (Dinamik)
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
@@ -177,7 +179,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 30),
               
               // --- FORM ALANLARI ---
-              // Sadece Kayıt Modunda Görünen Alanlar
               if (!_isLogin) ...[
                 Row(
                   children: [
@@ -190,7 +191,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildTextField("Kullanıcı Adı", Icons.alternate_email, _usernameController),
                 const SizedBox(height: 16),
                 
-                // Doğum Tarihi Seçici
                 GestureDetector(
                   onTap: () => _selectDate(context),
                   child: AbsorbPointer(
@@ -201,7 +201,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: "Doğum Tarihi",
                         prefixIcon: Icon(Icons.calendar_today),
                         hintText: "GG/AA/YYYY",
-                        // Tema dosyasındaki input stili otomatik uygulanır
                       ),
                     ),
                   ),
@@ -209,7 +208,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // Her İki Modda Görünen Alanlar
               _buildTextField("E-posta Adresi", Icons.email_outlined, _emailController, keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 16),
               _buildTextField("Şifre", Icons.lock_outline, _passwordController, isObscure: true),
@@ -231,14 +229,46 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+                        
+                        // --- YENİ: ŞIK HATA MESAJI KUTUSU ---
+                        // Sadece _errorMessage doluysa görünür
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            decoration: BoxDecoration(
+                              // Temanın hata rengini hafifletiyoruz (Saydam kırmızımsı)
+                              color: colorScheme.error.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: colorScheme.error.withOpacity(0.5)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline, color: colorScheme.error),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: TextStyle(
+                                      color: colorScheme.error, // Yazı rengi hata rengi olsun
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        // --------------------------------------
+
                         const SizedBox(height: 16),
                         
-                        // Mod Değiştirme Butonu
                         TextButton(
                           onPressed: () {
                             setState(() {
-                              _isLogin = !_isLogin; // Modu tersine çevir
-                              // Hata mesajlarını temizlemek istersen controller'ları burada temizleyebilirsin
+                              _isLogin = !_isLogin;
+                              _errorMessage = null; // Mod değişince hatayı temizle
                             });
                           },
                           child: RichText(
@@ -266,13 +296,12 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Yardımcı Widget: TextField Oluşturucu (Kod tekrarını önlemek için)
   Widget _buildTextField(String label, IconData icon, TextEditingController controller, {bool isObscure = false, TextInputType? keyboardType}) {
     return TextField(
       controller: controller,
       obscureText: isObscure,
       keyboardType: keyboardType,
-      style: TextStyle(color: Theme.of(context).colorScheme.onSurface), // Yazı rengi dinamik
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),

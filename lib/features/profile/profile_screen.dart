@@ -1,18 +1,33 @@
+// lib/features/profile/profile_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart'; // <--- EKLENDİ
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/theme/theme_notifier.dart'; // <--- EKLENDİ
+import '../../core/theme/theme_notifier.dart';
+import '../recipes/recipe_provider.dart'; 
 import '../auth/login_screen.dart';
 import 'saved_recipes_screen.dart';
+import 'edit_profile_screen.dart'; // <--- Yeni ekranı import etmeyi unutma!
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   Future<void> _cikisYap(BuildContext context) async {
+    // 1. ÖNCE HAFIZADAKİ ESKİ VERİLERİ SİLİYORUZ
+    try {
+      Provider.of<RecipeProvider>(context, listen: false).clearData();
+    } catch (e) {
+      debugPrint("Veri temizleme hatası (önemsiz): $e");
+    }
+
+    // 2. FIREBASE'DEN ÇIKIŞ YAPIYORUZ
     await FirebaseAuth.instance.signOut();
+    
     if (!context.mounted) return;
+
+    // 3. GİRİŞ EKRANINA YÖNLENDİRİYORUZ
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const LoginScreen()),
       (route) => false,
@@ -23,7 +38,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     
-    // Temanın durumunu dinliyoruz (Koyu mu Açık mı?)
+    // Temanın durumunu dinliyoruz
     final themeNotifier = Provider.of<ThemeNotifier>(context);
     final isDark = themeNotifier.isDarkMode;
 
@@ -41,31 +56,67 @@ class ProfileScreen extends StatelessWidget {
             children: [
               const SizedBox(height: 30),
               
-              // --- PROFİL RESMİ ---
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.neonCyan, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.neonCyan.withOpacity(isDark ? 0.4 : 0.2), 
-                      blurRadius: 15
-                    )
-                  ]
-                ),
-                child: CircleAvatar(
-                  radius: 50,
-                  backgroundColor: tileColor,
-                  child: Icon(Icons.person, size: 50, color: isDark ? Colors.white : Colors.grey),
+              // --- PROFİL RESMİ VE BİLGİSİ (DÜZENLEME İÇİN TIKLANABİLİR) ---
+              GestureDetector(
+                onTap: () {
+                  // Düzenleme Sayfasına Git
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => const EditProfileScreen())
+                  );
+                },
+                child: Column(
+                  children: [
+                    Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.neonCyan, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.neonCyan.withOpacity(isDark ? 0.4 : 0.2), 
+                                blurRadius: 15
+                              )
+                            ]
+                          ),
+                          child: CircleAvatar(
+                            radius: 50,
+                            backgroundColor: tileColor,
+                            child: Icon(Icons.person, size: 50, color: isDark ? Colors.white : Colors.grey),
+                          ),
+                        ),
+                        // Düzenleme ikonu (Sağ alt köşe)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.edit, size: 16, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    Text(
+                      user?.email ?? "Misafir", 
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Profili Düzenle", 
+                      style: TextStyle(color: Colors.blue, fontSize: 14, fontWeight: FontWeight.w500)
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
               
-              Text(
-                user?.email ?? "Misafir", 
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
-              ),
               const SizedBox(height: 40),
               
               // --- MENÜLER ---
@@ -82,7 +133,7 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedRecipesScreen())),
               ),
 
-              // 2. TEMA DEĞİŞTİRME ANAHTARI (Switch) - BURASI YENİ
+              // 2. TEMA DEĞİŞTİRME ANAHTARI
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
                 decoration: BoxDecoration(
@@ -138,7 +189,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Yardımcı Widget: Menü Kutucukları (Renkleri parametre olarak alıyor)
+  // Yardımcı Widget: Menü Kutucukları
   Widget _buildProfileTile(
     BuildContext context, {
     required IconData icon, 
@@ -155,7 +206,6 @@ class ProfileScreen extends StatelessWidget {
         color: tileColor,
         borderRadius: BorderRadius.circular(15),
         border: Border.all(color: borderColor),
-        // Light modda hafif gölge olsun, Dark modda düz olsun
         boxShadow: tileColor == Colors.white 
             ? [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))]
             : []
