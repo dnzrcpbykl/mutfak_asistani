@@ -8,6 +8,7 @@ buildscript {
         // genellikle varsayılan ayarlarda bu blok gizli olabilir ama
         // Firebase için şu satırı eklememiz şart:
         classpath("com.google.gms:google-services:4.4.2")
+        classpath("com.android.tools.build:gradle:8.2.1")
     }
 }
 
