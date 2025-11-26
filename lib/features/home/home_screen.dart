@@ -1,5 +1,3 @@
-// lib/features/home/home_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
@@ -41,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.initState();
     _mainTabController = TabController(length: 2, vsync: this);
     _mainTabController.addListener(() { setState(() {}); });
-
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
@@ -88,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (cat.contains("bakliyat") || cat.contains("makarna") || cat.contains("un")) return Icons.grain;
     if (cat.contains("atıştırmalık") || cat.contains("çikolata")) return Icons.cookie;
     if (cat.contains("içecek") || cat.contains("su")) return Icons.local_drink;
-    return Icons.category; 
+    return Icons.category;
   }
 
   String _formatQuantity(double quantity) {
@@ -99,15 +96,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  // GÜNCELLENEN: STOK DÜŞME / EKLEME (Paket Sayısı Mantığıyla)
   void _showQuantityDialog(PantryItem item, bool isIncrement) {
     final controller = TextEditingController();
     double defaultAmount = 1.0;
+    
+    // Eğer paketli ürünse, varsayılan olarak 1 paket miktarını öner
     if (item.pieceCount > 1 && item.quantity > 0) {
       defaultAmount = item.quantity / item.pieceCount;
     } else {
       if (item.unit.toLowerCase() == 'gr' || item.unit.toLowerCase() == 'g') defaultAmount = 100;
       if (item.unit.toLowerCase() == 'ml') defaultAmount = 200;
     }
+    
     controller.text = _formatQuantity(defaultAmount);
 
     showDialog(
@@ -119,6 +120,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text("${item.ingredientName} (${item.unit})"),
+            if (item.pieceCount > 1) 
+              Text("Şu an: ${item.pieceCount} Paket", style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 10),
             TextField(
               controller: controller,
@@ -139,10 +142,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final val = double.tryParse(controller.text.replaceAll(',', '.'));
               if (val != null && val > 0) {
                 double newQuantity = isIncrement ? item.quantity + val : item.quantity - val;
+                
+                // --- İNCE DETAY DÜZELTMESİ (Paket Sayısı Hesaplama) ---
+                int newPieceCount = item.pieceCount;
+                
+                if (item.pieceCount > 0) {
+                  // Tek bir paketin miktarı nedir? (Örn: 1.5kg / 3 paket = 0.5kg)
+                  double singlePackageSize = item.quantity / item.pieceCount;
+                  
+                  // Eğer işlem yapılan miktar, 1 paket boyutuna çok yakınsa (0.1 tolerans)
+                  // Paket sayısını da güncelle.
+                  if ((val - singlePackageSize).abs() < 0.1) {
+                     if (isIncrement) {
+                       newPieceCount++;
+                     } else {
+                       newPieceCount--; 
+                     }
+                  }
+                }
+                // -----------------------------
+
                 if (newQuantity <= 0) {
                    await _pantryService.deletePantryItem(item.id);
                 } else {
-                   await _pantryService.updatePantryItemQuantity(item.id, newQuantity);
+                   // Yeni paket sayısını da gönderiyoruz
+                   await _pantryService.updatePantryItemQuantity(
+                     item.id, 
+                     newQuantity, 
+                     newPieceCount: newPieceCount > 0 ? newPieceCount : 1
+                   );
                 }
                 if (context.mounted) Navigator.pop(context);
               }
@@ -158,17 +186,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // YENİ: Düzenleme Penceresi
+  // GÜNCELLENEN: DÜZENLEME PENCERESİ (Paket Sayısı Alanı Eklendi)
   void _showEditDialog(PantryItem item) {
     final nameController = TextEditingController(text: item.ingredientName);
     final quantityController = TextEditingController(text: _formatQuantity(item.quantity));
     final unitController = TextEditingController(text: item.unit);
+    final pieceCountController = TextEditingController(text: item.pieceCount.toString()); // Yeni
+    
     DateTime? tempDate = item.expirationDate;
     String selectedCategory = item.category;
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( // Dialog içinde setState kullanabilmek için
+      builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
             backgroundColor: Theme.of(context).cardTheme.color,
@@ -177,7 +207,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // İsim
                   TextField(
                     controller: nameController,
                     decoration: const InputDecoration(labelText: "Ürün Adı"),
@@ -185,46 +214,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      // Miktar
                       Expanded(
                         child: TextField(
                           controller: quantityController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: "Miktar"),
+                          decoration: const InputDecoration(labelText: "Toplam Miktar"),
                         ),
                       ),
                       const SizedBox(width: 10),
-                      // Birim
                       Expanded(
                         child: TextField(
                           controller: unitController,
-                          decoration: const InputDecoration(labelText: "Birim (kg, lt)"),
+                          decoration: const InputDecoration(labelText: "Birim"),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // Kategori Seçimi
+                  // PAKET SAYISI AYARI
+                  TextField(
+                    controller: pieceCountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Kaç Paket? (Opsiyonel)",
+                      helperText: "Örn: 3 paket makarna toplam 1.5kg ise buraya 3 yaz."
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    initialValue: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
+                    value: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
                     decoration: const InputDecoration(labelText: "Kategori"),
                     items: _categories.where((c) => c != "Tümü").map((String category) {
-                      return DropdownMenuItem(
-                        value: category,
-                        child: Text(category),
-                      );
+                      return DropdownMenuItem(value: category, child: Text(category));
                     }).toList(),
                     onChanged: (val) => setDialogState(() => selectedCategory = val ?? "Diğer"),
                   ),
                   const SizedBox(height: 10),
-                  // Tarih Seçici
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      tempDate == null 
-                        ? "Son Kullanma Tarihi Ekle" 
-                        : "SKT: ${DateFormat('dd/MM/yyyy').format(tempDate!)}"
-                    ),
+                    title: Text(tempDate == null ? "Son Kullanma Tarihi Ekle" : "SKT: ${DateFormat('dd/MM/yyyy').format(tempDate!)}"),
                     trailing: const Icon(Icons.calendar_today),
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -233,9 +261,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         firstDate: DateTime.now().subtract(const Duration(days: 365)),
                         lastDate: DateTime(2030),
                       );
-                      if (picked != null) {
-                        setDialogState(() => tempDate = picked);
-                      }
+                      if (picked != null) setDialogState(() => tempDate = picked);
                     },
                   ),
                 ],
@@ -248,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   final newName = nameController.text.trim();
                   final newQty = double.tryParse(quantityController.text.replaceAll(',', '.')) ?? item.quantity;
                   final newUnit = unitController.text.trim();
+                  final newPiece = int.tryParse(pieceCountController.text) ?? 1; // Yeni paket sayısı
 
                   if (newName.isNotEmpty && newQty > 0) {
                     await _pantryService.updatePantryItemDetails(
@@ -257,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       unit: newUnit,
                       expirationDate: tempDate,
                       category: selectedCategory,
+                      pieceCount: newPiece, // Servise gönder
                     );
                     if (mounted) Navigator.pop(context);
                   }
@@ -321,7 +349,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildNestedPantryView() {
     final colorScheme = Theme.of(context).colorScheme;
-    
     return StreamBuilder<List<PantryItem>>(
       stream: _pantryStream,
       builder: (context, snapshot) {
@@ -416,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       return matchesCategory && matchesSearch;
     }).toList();
-        
+
     if (filteredItems.isEmpty) {
       if (_searchQuery.isNotEmpty) {
         return const EmptyStateWidget(
@@ -514,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // DÜZENLE BUTONU (Yeni)
+                    // DÜZENLE BUTONU
                     InkWell(
                       onTap: () => _showEditDialog(item),
                       borderRadius: BorderRadius.circular(20),

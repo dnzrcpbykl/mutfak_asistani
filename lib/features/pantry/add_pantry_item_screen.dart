@@ -3,17 +3,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; // <--- EKLENDİ
+import 'package:mobile_scanner/mobile_scanner.dart'; 
 
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
 import 'pantry_service.dart';
-import 'barcode_service.dart'; // <--- EKLENDİ
+import 'barcode_service.dart'; 
 import '../ocr/ocr_service.dart';
 import '../ocr/scanned_products_screen.dart';
 
 class AddPantryItemScreen extends StatefulWidget {
   const AddPantryItemScreen({super.key});
+
   @override
   State<AddPantryItemScreen> createState() => _AddPantryItemScreenState();
 }
@@ -29,13 +30,11 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
 
   final PantryService _pantryService = PantryService();
   final OCRService _ocrService = OCRService();
-  final BarcodeService _barcodeService = BarcodeService(); // <--- EKLENDİ
+  final BarcodeService _barcodeService = BarcodeService(); 
   
   bool _isLoading = false;
 
-  // --- BARKOD TARAMA FONKSİYONU ---
   Future<void> _scanBarcode() async {
-    // Kamera Sayfasını Aç
     final String? scannedCode = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -53,37 +52,29 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
               }
             },
           ),
-
-          
         ),
       ),
     );
 
-    // Barkod geldiyse işlem yap
     if (scannedCode != null) {
       setState(() => _isLoading = true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün aranıyor...")));
       
-      // Servise Sor (Firebase veya API)
       final productName = await _barcodeService.findProduct(scannedCode);
-      
       setState(() => _isLoading = false);
 
       if (productName != null && productName.isNotEmpty) {
-        // BULUNDU!
         setState(() {
            _ingredientNameController.text = productName;
         });
-        _searchIngredients(productName); // Bizim kiler veritabanında var mı diye bak (Kategori için)
+        _searchIngredients(productName); 
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Bulundu: $productName"), backgroundColor: Colors.green));
       } else {
-        // BULUNAMADI! -> Kullanıcıya sor (Dialog aç)
         _showAddProductDialog(scannedCode);
       }
     }
   }
 
-  // Ürün bulunamadığında açılan pencere
   void _showAddProductDialog(String barcode) {
     final nameController = TextEditingController();
     showDialog(
@@ -94,7 +85,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Kullanıcıyı motive eden mesaj
             const Text("Bu ürünü veritabanımızda ilk gören sensin!"),
             const SizedBox(height: 8),
             const Text("Adını yazıp kaydedersen, bu barkod veritabanımıza eklenecek.", style: TextStyle(fontSize: 12, color: Colors.grey)),
@@ -114,21 +104,17 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
           
-          // --- KAYDETME BUTONU ---
           ElevatedButton(
             onPressed: () async {
               final name = nameController.text.trim();
               if (name.isNotEmpty) {
-                // 1. ADIM: İşte burası veriyi senin veritabanına yazar!
                 await _barcodeService.contributeToPool(barcode, name);
                 
-                // 2. ADIM: Ekrandaki formu doldurur
                 setState(() {
                   _ingredientNameController.text = name;
                 });
-                
                 if (mounted) {
-                  Navigator.pop(context); // Pencereyi kapat
+                  Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Harika! Ürün veritabanımıza kaydedildi."),
@@ -144,7 +130,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
       ),
     );
   }
-  // --------------------------------
 
   void _searchIngredients(String query) async {
     if (query.isEmpty) {
@@ -168,6 +153,9 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   }
 
   Future<void> _addItemToPantry() async {
+    // KLAVYEYİ KAPAT (UX İyileştirmesi)
+    FocusScope.of(context).unfocus(); 
+
     if (_formKey.currentState!.validate()) {
       String ingredientId = _selectedIngredient?.id ?? '';
       String ingredientName = _ingredientNameController.text.trim();
@@ -184,6 +172,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
         if (currentUser == null) throw Exception("Kullanıcı oturumu açmamış.");
 
         String category = _selectedIngredient?.category ?? 'Diğer';
+        
         final newItem = PantryItem(
           id: '',
           userId: currentUser.uid,
@@ -232,6 +221,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
           ),
         ),
       );
+      
       try {
         final scannedData = await _ocrService.textToIngredients(imagePath);
         if (mounted) Navigator.of(context).pop();
@@ -301,7 +291,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
-                    // --- ÜST BUTONLAR GRUBU ---
                     Row(
                       children: [
                         Expanded(
@@ -319,7 +308,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _scanBarcode, // <--- BARKOD BUTONU
+                            onPressed: _scanBarcode,
                             icon: const Icon(Icons.qr_code_2),
                             label: const Text("Barkod"),
                             style: ElevatedButton.styleFrom(
@@ -333,7 +322,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ... Mevcut form alanları (İsim, Miktar vs.) ...
                     TextFormField(
                       controller: _ingredientNameController,
                       style: TextStyle(color: colorScheme.onSurface),
@@ -357,7 +345,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                       validator: (value) => value!.isEmpty ? "Lütfen malzeme adını girin." : null,
                     ),
 
-                    // Arama Sonuçları Listesi
                     if (_searchResults.isNotEmpty && _selectedIngredient == null)
                       Container(
                         height: 150,
@@ -386,7 +373,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         ),
                       ),
                     
-                    // Yeni Ekleme Butonu (Eğer veritabanında yoksa)
                     if (_ingredientNameController.text.isNotEmpty && _selectedIngredient == null && _searchResults.isEmpty)
                        Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -398,7 +384,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                               await _pantryService.addIngredientToSystem(newIngredient);
                               if (!context.mounted) return;
                               setState(() {
-                                _selectedIngredient = newIngredient; 
+                                _selectedIngredient = newIngredient;
                                 _searchResults = [];
                               });
                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yeni malzeme veritabanına eklendi.")));
@@ -423,6 +409,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                     ),
                     
                     const SizedBox(height: 16),
+                
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -442,6 +429,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                       label: const Text("Kilerime Ekle"),
                       style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
                     ),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
                   ],
                 ),
               ),

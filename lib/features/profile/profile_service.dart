@@ -1,11 +1,7 @@
-// lib/features/profile/profile_service.dart
-
+import 'dart:convert'; // Base64 için gerekli
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// Resim yükleme işlemi için (Firebase Storage kullanmıyorsak yerel tutamayız,
-// o yüzden şimdilik sadece base64 string veya URL mantığı düşünebiliriz. 
-// Ancak Storage kurulumu uzun süreceği için şimdilik sadece Ad/Soyad/Email odaklı gidelim
-// Veya Firestore'a base64 string olarak kaydedebiliriz - küçük resimler için uygundur).
 
 class ProfileService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -20,41 +16,46 @@ class ProfileService {
     return doc.data();
   }
 
-  // Profil Bilgilerini Güncelle (Ad, Soyad)
-  Future<void> updateProfileInfo(String name, String surname) async {
+  // GÜNCELLENEN: Profil Bilgilerini ve Fotoğrafı Güncelle
+  Future<void> updateProfileInfo({
+    required String name, 
+    required String surname, 
+    File? imageFile
+  }) async {
     if (currentUser == null) return;
-    await _firestore.collection('users').doc(currentUser!.uid).update({
+
+    Map<String, dynamic> data = {
       'name': name,
       'surname': surname,
-    });
+    };
+
+    // Eğer yeni bir resim seçildiyse, onu metne çevirip kaydedelim
+    if (imageFile != null) {
+      List<int> imageBytes = await imageFile.readAsBytes();
+      String base64Image = base64Encode(imageBytes);
+      data['profileImage'] = base64Image; // Veritabanına ekle
+    }
+
+    await _firestore.collection('users').doc(currentUser!.uid).update(data);
   }
 
-  // E-posta Güncelle
   Future<void> updateEmail(String newEmail, String password) async {
     if (currentUser == null) return;
-    
-    // Hassas işlem olduğu için önce şifre ile doğrulama şart
     AuthCredential credential = EmailAuthProvider.credential(
       email: currentUser!.email!, 
       password: password
     );
-
     await currentUser!.reauthenticateWithCredential(credential);
     await currentUser!.updateEmail(newEmail);
-    // Firestore'daki email bilgisini de güncelleyelim
     await _firestore.collection('users').doc(currentUser!.uid).update({'email': newEmail});
   }
 
-  // Şifre Güncelle
   Future<void> updatePassword(String currentPassword, String newPassword) async {
     if (currentUser == null) return;
-
-    // Önce eski şifreyle doğrulama
     AuthCredential credential = EmailAuthProvider.credential(
       email: currentUser!.email!, 
       password: currentPassword
     );
-
     await currentUser!.reauthenticateWithCredential(credential);
     await currentUser!.updatePassword(newPassword);
   }

@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/models/pantry_item.dart';
 import '../pantry/pantry_service.dart';
-import '../market/market_service.dart'; // <--- Market servisini ekle
+import '../market/market_service.dart';
 
 class ScannedProductsScreen extends StatefulWidget {
   final Map<String, dynamic> scannedData; 
@@ -17,7 +17,7 @@ class ScannedProductsScreen extends StatefulWidget {
 
 class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   final PantryService _pantryService = PantryService();
-  final MarketService _marketService = MarketService(); // <--- Servisi başlat
+  final MarketService _marketService = MarketService();
   
   late List<Map<String, dynamic>> _items;
   late String _marketName;
@@ -31,53 +31,57 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     List<dynamic> rawItems = widget.scannedData['items'] ?? [];
     _marketName = widget.scannedData['market_name'] ?? 'Bilinmiyor';
 
-    _items = _mergeItems(rawItems);
+    // Artık karmaşık parse işlemlerine gerek yok, AI temiz veri veriyor.
+    // Sadece aynı ürünleri (İsimleri aynı olanları) birleştiriyoruz.
+    _items = _mergeItemsSimple(rawItems);
 
     _selectedItems = List.generate(_items.length, (index) => true);
-    
     _expirationDates = _items.map((item) {
       int days = item['days_to_expire'] ?? 7;
       return DateTime.now().add(Duration(days: days));
     }).toList();
   }
 
-  List<Map<String, dynamic>> _mergeItems(List<dynamic> rawList) {
-  List<Map<String, dynamic>> mergedList = [];
-  
-  for (var item in rawList) {
-    String name = item['product_name'] ?? '';
-    String brand = item['brand'] ?? ''; 
+  // --- BASİT BİRLEŞTİRME (AI GÜVENİLİR OLDUĞU İÇİN) ---
+  List<Map<String, dynamic>> _mergeItemsSimple(List<dynamic> rawList) {
+    List<Map<String, dynamic>> mergedList = [];
     
-    int existingIndex = mergedList.indexWhere((element) => 
-        element['product_name'] == name && 
-        (element['brand'] ?? '') == brand
-    );
+    for (var item in rawList) {
+      String name = (item['product_name'] ?? '').trim();
+      String brand = (item['brand'] ?? '').trim();
+      double amount = (item['amount'] as num).toDouble();
+      String unit = (item['unit'] ?? 'adet').toString().toLowerCase();
+      double price = (item['price'] as num?)?.toDouble() ?? 0.0;
 
-    if (existingIndex != -1) {
-      double currentAmount = (mergedList[existingIndex]['amount'] as num).toDouble();
-      double newAmount = (item['amount'] as num).toDouble();
-      
-      double currentPrice = (mergedList[existingIndex]['price'] as num?)?.toDouble() ?? 0.0;
-      double newPrice = (item['price'] as num?)?.toDouble() ?? 0.0;
-      
-      // Mevcut paket sayısını al, yoksa 1 kabul et
-      int currentCount = mergedList[existingIndex]['pieceCount'] ?? 1;
+      // Markayı isme ekleyelim (Eğer isimde yoksa)
+      if (brand.isNotEmpty && !name.toLowerCase().contains(brand.toLowerCase())) {
+        name = "$brand $name";
+      }
+      // Baş harfleri büyüt
+      name = toTitleCase(name);
 
-      mergedList[existingIndex]['amount'] = currentAmount + newAmount;
-      mergedList[existingIndex]['price'] = currentPrice + newPrice;
-      
-      // YENİ: Paket sayısını 1 arttır
-      mergedList[existingIndex]['pieceCount'] = currentCount + 1;
+      // LİSTEDE VAR MI?
+      int existingIndex = mergedList.indexWhere((element) => 
+          element['product_name'] == name && 
+          element['unit'] == unit
+      );
 
-    } else {
-      // İlk defa ekleniyor, pieceCount = 1 olarak başlat
-      var newItem = Map<String, dynamic>.from(item);
-      newItem['pieceCount'] = 1;
-      mergedList.add(newItem);
+      if (existingIndex != -1) {
+        // VARSA ÜSTÜNE EKLE
+        mergedList[existingIndex]['amount'] += amount;
+        mergedList[existingIndex]['price'] += price;
+      } else {
+        // YOKSA YENİ EKLE
+        var newItem = Map<String, dynamic>.from(item);
+        newItem['product_name'] = name;
+        newItem['amount'] = amount;
+        newItem['unit'] = unit;
+        newItem['pieceCount'] = 1; // Paket mantığı artık AI tarafından "1" olarak geliyor (Boyut isme yazıldı)
+        mergedList.add(newItem);
+      }
     }
+    return mergedList;
   }
-  return mergedList;
-}
 
   void _toggleSelectAll(bool? value) {
     setState(() {
@@ -86,69 +90,90 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   }
 
   Future<void> _saveSelectedToPantry() async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
-  int count = 0;
-  
-  showDialog(
-    context: context, 
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator())
-  );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator())
+    );
+    
+    final pantrySnapshot = await _pantryService.pantryRef.get();
+    final existingPantryItems = pantrySnapshot.docs;
 
-  for (int i = 0; i < _items.length; i++) {
-    if (_selectedItems[i]) {
-      final itemData = _items[i];
-      String ingredientName = itemData['product_name']; 
-      String? brand = itemData['brand'];
-      double price = (itemData['price'] as num?)?.toDouble() ?? 0.0;
-      
-      // YENİ: Hesaplanan paket sayısını al
-      int pieceCount = itemData['pieceCount'] ?? 1;
+    int count = 0;
+    for (int i = 0; i < _items.length; i++) {
+      if (_selectedItems[i]) {
+        final itemData = _items[i];
+        String ingredientName = itemData['product_name'];
+        double quantityToAdd = (itemData['amount'] as num).toDouble();
+        String unit = itemData['unit'];
+        double price = (itemData['price'] as num?)?.toDouble() ?? 0.0;
 
-      final newItem = PantryItem(
-        id: '',
-        userId: user.uid,
-        ingredientId: 'auto_ocr_${DateTime.now().millisecondsSinceEpoch}_$i',
-        ingredientName: ingredientName,
-        quantity: (itemData['amount'] as num).toDouble(),
-        unit: itemData['unit'] ?? 'adet',
-        expirationDate: _expirationDates[i],
-        createdAt: Timestamp.now(),
-        brand: brand,
-        marketName: _marketName,
-        price: price,
-        category: itemData['category'] ?? 'Diğer',
-        pieceCount: pieceCount, // Model'e gönderiyoruz
-      );
+        // Kilerde var mı kontrol et
+        DocumentSnapshot? matchingDoc;
+        try {
+          matchingDoc = existingPantryItems.firstWhere((doc) {
+            final data = doc.data() as PantryItem;
+            return data.ingredientName.toLowerCase() == ingredientName.toLowerCase() &&
+                   data.unit.toLowerCase() == unit.toLowerCase();
+          });
+        } catch (e) {
+          matchingDoc = null;
+        }
 
-      await _pantryService.addPantryItem(newItem);
+        if (matchingDoc != null) {
+          final existingItem = matchingDoc.data() as PantryItem;
+          await _pantryService.updatePantryItemQuantity(matchingDoc.id, existingItem.quantity + quantityToAdd);
+        } else {
+          final newItem = PantryItem(
+            id: '',
+            userId: user.uid,
+            ingredientId: 'auto_ocr_${DateTime.now().millisecondsSinceEpoch}_$i',
+            ingredientName: ingredientName,
+            quantity: quantityToAdd,
+            unit: unit, 
+            expirationDate: _expirationDates[i],
+            createdAt: Timestamp.now(),
+            brand: itemData['brand'],
+            marketName: _marketName,
+            price: price,
+            category: itemData['category'] ?? 'Diğer',
+            pieceCount: 1,
+          );
+          await _pantryService.addPantryItem(newItem);
+        }
 
-      if (price > 0) {
-        await _marketService.addPriceInfo(ingredientName, _marketName, price);
+        if (price > 0) {
+          await _marketService.addPriceInfo(ingredientName, _marketName, price);
+        }
+        count++;
       }
-      count++;
     }
+
+    if (!mounted) return;
+    Navigator.pop(context); 
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("$count ürün kilere eklendi!"), backgroundColor: Colors.green),
+    );
   }
 
-  if (!mounted) return;
-  Navigator.pop(context); 
-  Navigator.pop(context); 
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text("$count ürün ($_marketName) kaydedildi!"), backgroundColor: Colors.green),
-  );
-}
+  String toTitleCase(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((word) {
+      if (word.isEmpty) return '';
+      if (word.startsWith('(')) return word.toUpperCase(); 
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
 
   @override
   Widget build(BuildContext context) {
-    // UI Kodu (Build metodu) aynı kalabilir, değişiklik yok.
-    // Sadece yukarıdaki _saveSelectedToPantry ve _mergeItems önemliydi.
-    // ... (Önceki kodun build kısmı aynen buraya gelecek) ...
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Toplam tutarı hesapla
     double totalCost = 0;
     for (int i = 0; i < _items.length; i++) {
       if (_selectedItems[i]) {
@@ -169,7 +194,6 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
       ),
       body: Column(
         children: [
-          // MARKET & FİYAT KARTI
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -209,99 +233,96 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
           ),
           const Divider(height: 1),
 
-          // LİSTE
           Expanded(
-  child: ListView.builder(
-    itemCount: _items.length,
-    itemBuilder: (context, index) {
-      final item = _items[index];
-      final double price = (item['price'] as num?)?.toDouble() ?? 0.0;
-      
-      return Card(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withOpacity(0.5),
-        child: ListTile(
-          leading: Checkbox(
-            value: _selectedItems[index],
-            activeColor: colorScheme.primary,
-            onChanged: (val) => setState(() => _selectedItems[index] = val ?? false),
-          ),
-          
-          title: Text(
-            item['product_name'], 
-            style: TextStyle(fontWeight: FontWeight.bold, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey)
-          ),
-          
-          subtitle: Text(
-            "${item['brand'] ?? 'Markasız'} • ${item['amount']} ${item['unit']}",
-            style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
-          ),
-          
-          // --- HATA BURADAYDI, DÜZELTİLDİ ---
-          trailing: SizedBox(
-            width: 90, // Genişliği biraz kıstık ki tarih sığsın
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // FİYAT DÜZELTMESİ:
-                Text(
-                  "${price.toStringAsFixed(2)} TL", // Küsuratı kestik (2.10 TL gibi)
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: _selectedItems[index] ? colorScheme.secondary : Colors.grey
-                  ),
-                  maxLines: 1, // Tek satıra zorla
-                  overflow: TextOverflow.ellipsis, // Sığmazsa ... koy
-                ),
+            child: ListView.builder(
+              itemCount: _items.length,
+              itemBuilder: (context, index) {
+                final item = _items[index];
+                final double price = (item['price'] as num?)?.toDouble() ?? 0.0;
                 
-                const SizedBox(height: 4),
-                
-                // TARİH SEÇİCİ
-                InkWell(
-                  onTap: _selectedItems[index] ? () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _expirationDates[index],
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) setState(() => _expirationDates[index] = picked);
-                  } : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.withOpacity(0.5)),
-                      borderRadius: BorderRadius.circular(4),
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withOpacity(0.5),
+                  child: ListTile(
+                    leading: Checkbox(
+                      value: _selectedItems[index],
+                      activeColor: colorScheme.primary,
+                      onChanged: (val) => setState(() => _selectedItems[index] = val ?? false),
                     ),
-                    child: Text(
-                      DateFormat('dd/MM/yy').format(_expirationDates[index]),
-                      style: TextStyle(fontSize: 11, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey),
+                    
+                    title: Text(
+                      item['product_name'],
+                      style: TextStyle(fontWeight: FontWeight.bold, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey)
+                    ),
+                    
+                    subtitle: Text(
+                      "${item['amount'].toInt()} ${item['unit']}", // Miktar
+                      style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                    ),
+                    
+                    trailing: SizedBox(
+                      width: 90, 
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            "${price.toStringAsFixed(2)} TL",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _selectedItems[index] ? colorScheme.secondary : Colors.grey),
+                          ),
+                          const SizedBox(height: 4),
+                          InkWell(
+                            onTap: _selectedItems[index] ? () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _expirationDates[index],
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) setState(() => _expirationDates[index] = picked);
+                            } : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.withOpacity(0.5)),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                DateFormat('dd/MM/yy').format(_expirationDates[index]),
+                                style: TextStyle(fontSize: 11, color: _selectedItems[index] ? colorScheme.onSurface : Colors.grey),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
-        ),
-      );
-    },
-  ),
-),
           
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _selectedItems.contains(true) ? _saveSelectedToPantry : null,
-                icon: const Icon(Icons.save_alt),
-                label: Text("Seçilenleri Kilere Ekle (${_selectedItems.where((x) => x).length})"),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: colorScheme.primary,
-                  foregroundColor: colorScheme.onPrimary,
+          Container(
+            decoration: BoxDecoration(
+              color: theme.scaffoldBackgroundColor,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]
+            ),
+            child: SafeArea(
+              top: false, 
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _selectedItems.contains(true) ? _saveSelectedToPantry : null,
+                    icon: const Icon(Icons.save_alt),
+                    label: Text("Seçilenleri Kilere Ekle (${_selectedItems.where((x) => x).length})"),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: colorScheme.primary,
+                      foregroundColor: colorScheme.onPrimary,
+                    ),
+                  ),
                 ),
               ),
             ),

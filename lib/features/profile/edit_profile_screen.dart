@@ -104,33 +104,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
-      // 1. Temel Bilgileri Güncelle (Ad, Soyad)
+      // --- GÜNCELLENEN KISIM: Resmi de gönderiyoruz ---
       await _profileService.updateProfileInfo(
-        _nameController.text.trim(),
-        _surnameController.text.trim(),
+        name: _nameController.text.trim(),
+        surname: _surnameController.text.trim(),
+        imageFile: _selectedImage, // Seçilen resmi buraya ekledik
       );
+      // ------------------------------------------------
 
-      // Değişiklik kontrolü için mevcut email
       final currentEmail = _profileService.currentUser?.email;
       final newEmail = _emailController.text.trim();
       final newPassword = _newPasswordController.text.trim();
       final currentPassword = _currentPasswordController.text.trim();
 
-      // 2. Kritik İşlemler (Email veya Şifre Değişikliği)
       bool sensitiveChange = (newEmail != currentEmail) || (newPassword.isNotEmpty);
 
       if (sensitiveChange) {
-        // Kritik işlem varsa mutlaka mevcut şifre girilmeli
         if (currentPassword.isEmpty) {
           throw Exception("E-posta veya şifre değiştirmek için 'Mevcut Şifrenizi' girmelisiniz.");
         }
-
-        // A) E-posta güncelleme
         if (newEmail != currentEmail) {
           await _profileService.updateEmail(newEmail, currentPassword);
         }
-
-        // B) Şifre güncelleme
         if (newPassword.isNotEmpty) {
           if (newPassword.length < 6) {
             throw Exception("Yeni şifre en az 6 karakter olmalıdır.");
@@ -143,7 +138,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Profil başarıyla güncellendi! ✅"), backgroundColor: Colors.green)
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Geri dönerken "güncellendi" sinyali ver (true)
 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -296,6 +291,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         child: const Text("Değişiklikleri Kaydet", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
                   ],
                 ),
               ),

@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // Provider paketi eklendi
+import 'package:provider/provider.dart';
+import 'dart:io'; 
 
 // Modeller
 import '../../core/models/recipe.dart';
 import '../../core/models/market_price.dart';
 
-// Servisler (Aksiyonlar için)
+// Servisler 
 import '../pantry/pantry_service.dart';
 import '../market/market_service.dart';
 import '../shopping_list/shopping_service.dart';
 import 'recipe_service.dart';
 import 'recipe_importer_service.dart';
 
-// Provider (Veri Yönetimi için)
+// Provider 
 import 'recipe_provider.dart';
 
 // Ekranlar
 import 'cooking_mode_screen.dart';
 import '../../core/widgets/recipe_loading_skeleton.dart';
-import 'dart:io';
 
 class RecipeRecommendationScreen extends StatefulWidget {
   const RecipeRecommendationScreen({super.key});
@@ -28,7 +28,6 @@ class RecipeRecommendationScreen extends StatefulWidget {
 }
 
 class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen> {
-  // Veri çekme dışındaki EYLEMLER için servisleri burada tutuyoruz
   final PantryService _pantryService = PantryService();
   final RecipeService _recipeService = RecipeService();
   final MarketService _marketService = MarketService();
@@ -38,18 +37,255 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
   @override
   void initState() {
     super.initState();
-    // Ekran açılır açılmaz Provider'a "Verileri Getir" emrini veriyoruz.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
     });
+  }
+
+  String _cleanIngredientForShopping(String rawName) {
+    String cleaned = rawName.replaceAll(RegExp(r'\s*\(.*?\)'), '');
+    if (cleaned.contains(',')) {
+      cleaned = cleaned.split(',').first;
+    }
+    cleaned = cleaned.replaceFirst(RegExp(r'^[\d\s\.,/-]+'), '');
+
+    final List<String> unitsToRemove = [
+      'su bardağı', 'çay bardağı', 'yemek kaşığı', 'çay kaşığı', 'tatlı kaşığı', 'kahve fincanı',
+      'orta boy', 'büyük boy', 'küçük boy',
+      'kilogram', 'gram', 'litre', 'mililitre',
+      'paket', 'demet', 'tutam', 'dilim', 'diş', 'baş', 'kutu', 'kavanoz', 'avuç',
+      'adet', 'tane', 
+      'kg', 'gr', 'lt', 'ml'
+    ];
+
+    cleaned = cleaned.trim();
+    for (var unit in unitsToRemove) {
+      if (cleaned.toLowerCase().startsWith(unit.toLowerCase())) {
+        cleaned = cleaned.substring(unit.length).trim();
+      }
+    }
+    cleaned = cleaned.replaceFirst(RegExp(r'^[\d\s\.,/-]+'), '');
+    if (cleaned.isNotEmpty) {
+      cleaned = cleaned[0].toUpperCase() + cleaned.substring(1);
+    }
+    return cleaned.trim();
+  }
+
+  Widget _buildDifficultyVisual(String difficulty) {
+    int level = 1;
+    if (difficulty.toLowerCase() == 'orta') level = 2;
+    if (difficulty.toLowerCase() == 'zor') level = 3;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        return Icon(
+          Icons.local_fire_department,
+          size: 18,
+          color: index < level ? Colors.orange : Colors.grey.withOpacity(0.3),
+        );
+      }),
+    );
+  }
+
+  // --- YENİ: TERCİH SEÇİM PENCERESİ ---
+  void _showPreferenceDialog() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.cardTheme.color,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Bugün canın ne çekiyor? 👨‍🍳", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text("Şef tarifleri senin moduna göre hazırlasın.", style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 20),
+              
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _buildPreferenceChip("🎲 Fark Etmez", "Genel, lezzetli öneriler sun."),
+                  _buildPreferenceChip("⚡ Hızlı & Pratik", "30 dakikayı geçmeyen, pratik tarifler."),
+                  _buildPreferenceChip("🥗 Sağlıklı & Diyet", "Düşük kalorili, sağlıklı sebze ağırlıklı tarifler."),
+                  _buildPreferenceChip("🍲 Sulu Yemek", "Geleneksel Türk usulü tencere yemekleri."),
+                  _buildPreferenceChip("🌶️ Acı & Baharatlı", "Bol baharatlı, iştah açıcı tarifler."),
+                  _buildPreferenceChip("🍰 Tatlı Krizi", "Tatlı veya hamur işi tarifleri."),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPreferenceChip(String label, String promptValue) {
+    return ActionChip(
+      label: Text(label),
+      onPressed: () {
+        Navigator.pop(context); // Pencereyi kapat
+        _startAiGeneration(promptValue); // AI'yı başlat
+      },
+    );
+  }
+
+  // --- AI SÜRECİNİ BAŞLATAN FONKSİYON ---
+  Future<void> _startAiGeneration(String userPreference) async {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        throw SocketException("İnternet yok");
+      }
+    } on SocketException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İnternet bağlantısı yok!"), backgroundColor: Colors.red));
+      return; 
+    }
+    
+    final pantrySnapshot = await _pantryService.pantryRef.get();
+    final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();
+
+    if (myIngredients.isEmpty) {
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Önce kilerine malzeme eklemelisin!"), backgroundColor: Colors.red));
+       return;
+    }
+
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: theme.cardTheme.color,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: colorScheme.primary, width: 1)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: colorScheme.primary),
+              const SizedBox(height: 20),
+              Text("Cyber Chef Menüyü Hazırlıyor...", style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text("Tercihine uygun tarifler seçiliyor...", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. AI Tarif Üretsin (Tercihle Birlikte)
+      await _importer.generateRecipesFromPantry(myIngredients, userPreference: userPreference);
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Yükleniyor'u kapat
+
+      // 2. Listeyi yenile
+      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
+
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
+    }
+  }
+
+  void _showPreparationSheet(BuildContext context, Recipe recipe) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (_, scrollController) {
+          return Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+                ),
+                const Text("Hazırlık Kontrolü 🔪", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text("Şefim, başlamadan önce malzemeleri tezgaha hazırlayalım.", style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 20),
+                
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: recipe.ingredients.length,
+                    itemBuilder: (context, index) {
+                      return CheckboxListTile(
+                        value: true, 
+                        activeColor: Theme.of(context).colorScheme.primary,
+                        title: Text(recipe.ingredients[index], style: const TextStyle(fontWeight: FontWeight.w500)),
+                        onChanged: (val) {}, 
+                      );
+                    },
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
+                
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context); 
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CookingModeScreen(
+                            recipe: recipe,
+                            onComplete: () => _showConsumeDialog(context, recipe),
+                          ),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    ),
+                    icon: const Icon(Icons.soup_kitchen),
+                    label: const Text("HER ŞEY HAZIR, PİŞİRMEYE BAŞLA!", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                SizedBox(height: MediaQuery.of(context).padding.bottom), 
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    // Provider'ı dinliyoruz (Veri değişince burası tetiklenir)
     final recipeProvider = Provider.of<RecipeProvider>(context);
 
     return Scaffold(
@@ -58,7 +294,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         centerTitle: true,
         automaticallyImplyLeading: false,
         actions: [
-          // Manuel Yenileme Butonu
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: "Listeyi Yenile",
@@ -72,102 +307,24 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         ],
       ),
       
-      // --- ŞEFE SOR (AI) BUTONU ---
+      // --- GÜNCELLENEN BUTON: Artık Dialog Açıyor ---
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
         elevation: 4,
         icon: const Icon(Icons.auto_awesome),
         label: const Text("Şefe Sor (AI)", style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: () async {
-          try {
-    // 1. Önce basit bir internet kontrolü (Google'a ping at)
-    // Bu, harici paket kullanmadan internet var mı diye bakmanın en basit yoludur.
-            final result = await InternetAddress.lookup('google.com');
-            if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-              // İnternet var, devam et...
-            }
-          } on SocketException catch (_) {
-            // İnternet yoksa hemen dur ve uyar
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.wifi_off, color: Colors.white),
-                    SizedBox(width: 10),
-                    Text("İnternet bağlantısı yok! Şef çalışamıyor."),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-              )
-            );
-            return; // Fonksiyondan çık
-          }
-          // Kileri anlık kontrol et (AI için)
-          final pantrySnapshot = await _pantryService.pantryRef.get();
-          final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();
-
-          if (myIngredients.isEmpty) {
-             if (!context.mounted) return;
-             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text("Önce kilerine malzeme eklemelisin!"), backgroundColor: colorScheme.error));
-             return;
-          }
-
-          if (!context.mounted) return;
-          // Yükleniyor Dialogu
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => Dialog(
-              backgroundColor: theme.cardTheme.color,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: colorScheme.primary, width: 1)),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: colorScheme.primary),
-                    const SizedBox(height: 20),
-                    Text("Cyber Chef Menüyü Hazırlıyor...", style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text("Önce ana yemekler ve çorbalar...", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))),
-                  ],
-                ),
-              ),
-            ),
-          );
-
-          try {
-            // 1. AI Tarif Üretsin ve Veritabanına Yazsın
-            await _importer.generateRecipesFromPantry(myIngredients);
-            
-            if (!context.mounted) return;
-            Navigator.pop(context); // Dialogu kapat
-
-            // 2. ÖNEMLİ: Provider'ı tetikle ki yeni gelen tarifler ekranda görünsün
-            recipeProvider.fetchAndCalculateRecommendations();
-
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
-
-          } catch (e) {
-            if (!mounted) return;
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: colorScheme.error));
-          }
-        },
+        onPressed: _showPreferenceDialog, // <--- Burayı değiştirdik
       ),
 
-      // --- GÖVDE (Provider Durumuna Göre) ---
       body: recipeProvider.isLoading
-          ? const RecipeLoadingSkeleton() // ARTIK SHIMMER KULLANIYORUZ
+          ? const RecipeLoadingSkeleton() 
           : recipeProvider.error != null
               ? Center(child: Text(recipeProvider.error!, style: TextStyle(color: colorScheme.error)))
               : _buildContent(context, recipeProvider),
     );
   }
 
-  // İçeriği Oluşturan Metot
   Widget _buildContent(BuildContext context, RecipeProvider provider) {
     final recommendations = provider.recommendations;
     final allPrices = provider.allPrices;
@@ -190,13 +347,13 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
       );
     }
 
-    // --- KATEGORİLERE GÖRE GRUPLAMA ---
     Map<String, List<dynamic>> groupedRecipes = {};
     final List<String> categoryOrder = ["Çorba", "Ana Yemek", "Aperatif", "Tatlı", "Genel"];
     
     for (var item in recommendations) {
       String cat = item['recipe'].category;
       if (!categoryOrder.contains(cat)) cat = "Genel";
+      
       if (!groupedRecipes.containsKey(cat)) groupedRecipes[cat] = [];
       groupedRecipes[cat]!.add(item);
     }
@@ -211,7 +368,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
 
-  // Kategori Başlığı ve Altındaki Tarifler
   Widget _buildCategorySection(BuildContext context, String category, List<dynamic> recipes, List<MarketPrice> prices) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
@@ -322,8 +478,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                
-                // --- ALTERNATİF MALZEME KUTUSU ---
                 if (subTips.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -353,7 +507,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     ),
                   ),
 
-                // --- EKSİK MALZEMELER KUTUSU ---
                 if (missing.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -378,7 +531,8 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                             style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
                             onPressed: () async {
                               for (var item in missing) {
-                                await _shoppingService.addItem(item);
+                                String cleanItem = _cleanIngredientForShopping(item);
+                                await _shoppingService.addItem(cleanItem);
                               }
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Eklendi!"), backgroundColor: Colors.green));
@@ -390,32 +544,45 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                   ),
                 const SizedBox(height: 16),
                 
-                // --- BİLGİ ETİKETLERİ ---
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildInfoChip(context, Icons.timer, "${recipe.prepTime} dk"),
-                    _buildInfoChip(context, Icons.bar_chart, recipe.difficulty),
-                    _buildInfoChip(context, Icons.category, recipe.category),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        _buildInfoChip(context, Icons.timer_outlined, "${recipe.prepTime} dk"),
+                        const SizedBox(width: 12),
+                        
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: theme.cardColor,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
+                          ),
+                          child: Row(
+                            children: [
+                              _buildDifficultyVisual(recipe.difficulty),
+                              const SizedBox(width: 4),
+                              Text(recipe.difficulty, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.7))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        _buildInfoChip(context, Icons.restaurant, recipe.category),
+                      ],
+                    ),
+                  ),
                 ),
+                
                 const SizedBox(height: 24),
                 
-                // --- PİŞİRME BUTONU ---
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CookingModeScreen(
-                            recipe: recipe,
-                            onComplete: () => _showConsumeDialog(context, recipe),
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: () => _showPreparationSheet(context, recipe),
                     icon: const Icon(Icons.restaurant),
                     label: const Text("ADIM ADIM PİŞİR"),
                     style: ElevatedButton.styleFrom(
@@ -447,15 +614,10 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
             onPressed: () async {
-              // 1. Stokları düş
               await _pantryService.consumeIngredients(recipe.ingredients);
-              
               if (!context.mounted) return;
-              Navigator.pop(context); // Dialogu kapat
-
-              // 2. ÖNEMLİ: Kiler değiştiği için listeyi YENİLEMEMİZ lazım
+              Navigator.pop(context); 
               Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
-
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncellendi!")));
             },
             child: const Text("Evet, Düş"),

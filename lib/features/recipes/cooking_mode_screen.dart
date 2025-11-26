@@ -1,10 +1,12 @@
+import 'dart:async'; // Timer için gerekli
 import 'package:flutter/material.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // <--- EKLENDİ
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../../core/models/recipe.dart';
 
 class CookingModeScreen extends StatefulWidget {
   final Recipe recipe;
-  final VoidCallback onComplete; // Pişirme bitince çalışacak fonksiyon
+  final VoidCallback onComplete;
 
   const CookingModeScreen({super.key, required this.recipe, required this.onComplete});
 
@@ -16,43 +18,154 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   late List<String> _steps;
   final PageController _pageController = PageController();
   int _currentStep = 0;
+  
+  // --- TTS (SES) DEĞİŞKENLERİ ---
+  final FlutterTts _flutterTts = FlutterTts();
+  bool _isSpeaking = false;
+
+  // --- TIMER (ZAMANLAYICI) DEĞİŞKENLERİ ---
+  Timer? _countdownTimer;
+  Duration _remainingTime = Duration.zero;
+  bool _isTimerRunning = false;
 
   @override
   void initState() {
     super.initState();
-    // 1. Ekranın kapanmasını engelle (Wakelock Aç)
-    WakelockPlus.enable(); 
-    
-    // 2. Tarifi akıllıca adımlara böl
+    WakelockPlus.enable();
     _steps = _parseInstructions(widget.recipe.instructions);
+    _initTts();
+  }
+
+  Future<void> _initTts() async {
+    await _flutterTts.setLanguage("tr-TR");
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setPitch(1.0);
+
+    _flutterTts.setStartHandler(() => setState(() => _isSpeaking = true));
+    _flutterTts.setCompletionHandler(() => setState(() => _isSpeaking = false));
+    _flutterTts.setErrorHandler((msg) => setState(() => _isSpeaking = false));
+  }
+
+  Future<void> _speakStep({String? customText}) async {
+    if (_isSpeaking) {
+      await _flutterTts.stop();
+    } else {
+      await _flutterTts.speak(customText ?? _steps[_currentStep]);
+    }
+  }
+
+  // --- ZAMANLAYICI MANTIĞI ---
+  void _startTimer(int minutes) {
+    if (_countdownTimer != null) _countdownTimer!.cancel();
+    
+    setState(() {
+      _remainingTime = Duration(minutes: minutes);
+      _isTimerRunning = true;
+    });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingTime.inSeconds > 0) {
+        setState(() {
+          _remainingTime = _remainingTime - const Duration(seconds: 1);
+        });
+      } else {
+        _stopTimer();
+        // Süre bitince sesli uyarı!
+        _speakStep(customText: "Süre doldu şefim! Bir sonraki adıma geçebilirsin.");
+        _showTimeIsUpDialog();
+      }
+    });
+  }
+
+  void _stopTimer() {
+    if (_countdownTimer != null) _countdownTimer!.cancel();
+    setState(() {
+      _isTimerRunning = false;
+      _remainingTime = Duration.zero;
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return "${twoDigits(d.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  void _showTimerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardTheme.color,
+        title: const Text("Zamanlayıcı Kur ⏱️"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildTimerOption(1),
+                _buildTimerOption(5),
+                _buildTimerOption(10),
+                _buildTimerOption(15),
+                _buildTimerOption(20),
+                _buildTimerOption(30),
+                _buildTimerOption(45),
+                _buildTimerOption(60),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimerOption(int minutes) {
+    return ActionChip(
+      label: Text("$minutes dk"),
+      onPressed: () {
+        Navigator.pop(context);
+        _startTimer(minutes);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$minutes dakikalık sayaç başladı!")));
+      },
+    );
+  }
+
+  void _showTimeIsUpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("⏰ Süre Doldu!"),
+        content: const Text("Yemeğini kontrol etmeyi unutma."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Tamam")),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
-    // 3. Sayfadan çıkınca ekran normale dönsün (Wakelock Kapat)
     WakelockPlus.disable();
     _pageController.dispose();
+    _flutterTts.stop();
+    if (_countdownTimer != null) _countdownTimer!.cancel();
     super.dispose();
   }
 
-  // Akıllı Ayrıştırıcı (Adımları bölme)
   List<String> _parseInstructions(String text) {
-    // 1. Önce numaralandırma var mı bak (1. Adım, 2. Adım...)
     final numberSplit = text.split(RegExp(r'\d+\.\s+'));
     List<String> cleanList = numberSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-    
     if (cleanList.length > 1) return cleanList;
-
-    // 2. Satır satır (\n) bölmeyi dene
     final lineSplit = text.split('\n');
     cleanList = lineSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-    
     if (cleanList.length > 1) return cleanList;
-
-    // 3. Cümle cümle (. ) bölmeyi dene
     final sentenceSplit = text.split('. ');
     cleanList = sentenceSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-
     return cleanList.isNotEmpty ? cleanList : [text];
   }
 
@@ -63,25 +176,54 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Pişirme Modu: ${widget.recipe.name}"),
+        title: Text("Pişirme Modu", style: TextStyle(color: colorScheme.onSurface)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        // Wakelock aktif olduğu için kullanıcıya küçük bir ikonla bilgi verebiliriz
-        actions: const [
-          Tooltip(
-            message: "Ekran açık kalacak",
-            child: Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Icon(Icons.wb_sunny_outlined, size: 20),
-            ),
-          )
+        iconTheme: IconThemeData(color: colorScheme.onSurface),
+        actions: [
+          // ZAMANLAYICI BUTONU
+          IconButton(
+            icon: Icon(_isTimerRunning ? Icons.timer_off : Icons.timer),
+            color: _isTimerRunning ? Colors.orange : colorScheme.primary,
+            onPressed: _isTimerRunning ? _stopTimer : _showTimerDialog,
+            tooltip: "Sayaç",
+          ),
+          // SESLİ OKUMA BUTONU
+          IconButton(
+            icon: Icon(_isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up),
+            color: _isSpeaking ? Colors.red : colorScheme.primary,
+            iconSize: 28,
+            onPressed: () => _speakStep(),
+            tooltip: "Adımı Oku",
+          ),
+          const SizedBox(width: 10),
         ],
       ),
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Column(
         children: [
-          // --- İLERLEME ÇUBUĞU ---
+          // --- AKTİF SAYAÇ GÖSTERGESİ ---
+          if (_isTimerRunning)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.withOpacity(0.1),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.timer_outlined, color: Colors.orange, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDuration(_remainingTime),
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange, fontFeatures: [FontFeature.tabularFigures()]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           LinearProgressIndicator(
             value: _steps.isNotEmpty ? (_currentStep + 1) / _steps.length : 1,
             backgroundColor: colorScheme.onSurface.withOpacity(0.1),
@@ -89,7 +231,6 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             minHeight: 6,
           ),
           
-          // --- ORTA KISIM (KAYDIRILABİLİR) ---
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -97,6 +238,8 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
               onPageChanged: (index) {
                 setState(() {
                   _currentStep = index;
+                  _isSpeaking = false;
+                  _flutterTts.stop();
                 });
               },
               itemCount: _steps.length,
@@ -127,6 +270,16 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                             color: colorScheme.onSurface,
                           ),
                         ),
+                        const SizedBox(height: 40),
+                        
+                        FilledButton.tonalIcon(
+                          onPressed: () => _speakStep(),
+                          icon: Icon(_isSpeaking ? Icons.stop : Icons.record_voice_over),
+                          label: Text(_isSpeaking ? "Durdur" : "Sesli Oku"),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                          ),
+                        )
                       ],
                     ),
                   ),
@@ -135,64 +288,67 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             ),
           ),
 
-          // --- KONTROL BUTONLARI ---
           Container(
-            padding: const EdgeInsets.all(24),
-            color: theme.scaffoldBackgroundColor, 
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // GERİ BUTONU
-                if (_currentStep > 0)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text("Geri"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorScheme.surface,
-                      foregroundColor: colorScheme.onSurface,
-                    ),
-                  )
-                else 
-                  const SizedBox(width: 100), // Boşluk tutucu
+            color: theme.scaffoldBackgroundColor,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (_currentStep > 0)
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                        },
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text("Geri"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorScheme.surface,
+                          foregroundColor: colorScheme.onSurface,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        ),
+                      )
+                    else 
+                      const SizedBox(width: 100),
 
-                // İLERİ / BİTİR BUTONU
-                if (_currentStep < _steps.length - 1)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                    },
-                    icon: const SizedBox.shrink(), // Sol ikonu gizle, sağa koyacağız
-                    label: const Row(
-                      children: [
-                         Text("İleri"),
-                         SizedBox(width: 8),
-                         Icon(Icons.arrow_forward),
-                      ],
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorScheme.primary,
-                      foregroundColor: colorScheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    ),
-                  )
-                else
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context); // Moddan çık
-                      widget.onComplete(); // Stok düşme dialogunu tetikle
-                    },
-                    icon: const Icon(Icons.check_circle),
-                    label: const Text("Yemeği Tamamla!"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    ),
-                  ),
-              ],
+                    if (_currentStep < _steps.length - 1)
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                        },
+                        icon: const SizedBox.shrink(),
+                        label: const Row(
+                          children: [
+                             Text("İleri"),
+                             SizedBox(width: 8),
+                             Icon(Icons.arrow_forward),
+                          ],
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context); 
+                          widget.onComplete(); 
+                        },
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text("Tamamla!"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

@@ -1,20 +1,18 @@
-// lib/features/recipes/recipe_importer_service.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Auth eklendi
-import '../../secrets.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../secrets.dart'; // API Key'in olduğu dosya
 
 class RecipeImporterService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance; // Kullanıcıyı tanımak için
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Yardımcı: O anki kullanıcının tarif önerileri koleksiyonunu getirir
   CollectionReference? _getUserRecipeCollection() {
     final user = _auth.currentUser;
     if (user == null) return null;
-    // Örnek Yol: users/USER_ID_123/suggestions
     return _firestore.collection('users').doc(user.uid).collection('suggestions');
   }
 
@@ -24,20 +22,17 @@ class RecipeImporterService {
     if (collectionRef == null) return;
 
     final snapshot = await collectionRef.get();
-    
-    // Batch (Toplu işlem) ile silme daha performanslıdır
     final batch = _firestore.batch();
     for (var doc in snapshot.docs) {
       batch.delete(doc.reference);
     }
     await batch.commit();
-    
     debugPrint("🧹 Kullanıcının eski önerileri temizlendi.");
   }
 
-  // 2. Kilerdeki Malzemelere Göre Tarif Üret
-  Future<void> generateRecipesFromPantry(List<String> myIngredients) async {
-    // Önce kullanıcının kendi eski önerilerini temizle
+  // 2. Kilerdeki Malzemelere Göre Tarif Üret (GÜNCELLENDİ: userPreference eklendi)
+  Future<void> generateRecipesFromPantry(List<String> myIngredients, {String userPreference = "Fark etmez, genel öneriler ver."}) async {
+    // Önce temizlik
     await _clearOldRecipes();
 
     if (myIngredients.isEmpty) {
@@ -46,40 +41,45 @@ class RecipeImporterService {
     }
 
     String ingredientsText = myIngredients.join(", ");
-    debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText");
+    debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText | Tercih: $userPreference");
 
     const String apiKey = Secrets.geminiApiKey;
     final url = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=$apiKey');
 
     final headers = {'Content-Type': 'application/json'};
-    
+
+    // --- GÜNCELLENEN KİŞİSELLEŞTİRİLMİŞ PROMPT ---
     final prompt = '''
-      Sen Türk mutfağına hakim uzman bir şefsin.
+      Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin.
       Elimdeki malzemeler: [$ingredientsText]
       
+      **KULLANICI TERCİHİ (ÇOK ÖNEMLİ):** Kullanıcı şu tarz yemekler istiyor: "$userPreference".
+      Lütfen tarifleri seçerken BU TERCİHE ÖNCELİK VER.
+      
       GÖREVİN:
-      Bu malzemelerin ÇOĞUNLUĞUNU kullanarak yapılabilecek en iyi 5-6 tarifi ver.
+      Bu malzemelerin çoğunluğunu (ve gerekirse her evde bulunan su, tuz, karabiber, sıvı yağ, salça gibi temel malzemeleri de ekleyerek) kullanarak yapılabilecek en iyi 5 tarifi oluştur.
       
-      ÖNEMLİ KURAL:
-      Malzeme listesinde ASLA marka adı kullanma.
-      (Örn: "Dr. Oetker Kabartma Tozu" yazma, sadece "Kabartma Tozu" yaz. "Pınar Süt" yazma, "Süt" yaz).
+      ÇOK ÖNEMLİ KURALLAR (BUNLARA KESİN UY):
+      1. **NET MİKTARLAR:** Malzeme listesinde ASLA belirsiz ifade kullanma. "Yumurta" YAZMA, "2 adet Yumurta" YAZ. "Un" YAZMA, "1 su bardağı Un" YAZ. Miktarı olmayan malzeme kabul edilmez.
+      2. **NET SÜRELER:** Yapılış adımlarında "pişirin" veya "haşlayın" deyip geçme. "Kısık ateşte 15 dakika pişirin", "200 derece fırında 25 dakika bekletin" gibi net SÜRE ve ISI bilgisi ver.
+      3. **MARKA YOK:** Marka adı kullanma (Örn: "Pakmaya" değil "Maya" yaz).
+      4. **KATEGORİLER:** Çorba, Ana Yemek, Ara Sıcak veya Tatlı olarak belirt.
       
-      ÖNCELİK SIRALAMASI:
-      1. Çorbalar
-      2. Ana Yemekler
-      3. Ara Sıcak / Aperatif
-      4. Tatlı
-      
-      JSON FORMATI:
+      İSTENEN JSON FORMATI (Sadece bu JSON'u döndür, yorum yapma):
       [
         {
           "name": "Yemek Adı",
-          "description": "Kısa açıklama",
-          "ingredients": ["Malzeme 1", "Malzeme 2"], 
-          "instructions": "Yapılış...",
+          "description": "Yemeğin kısa, iştah açıcı tanımı",
+          "ingredients": [
+            "2 adet Yumurta", 
+            "1 su bardağı Süt", 
+            "500 gr Kıyma", 
+            "1 çay kaşığı Tuz"
+          ], 
+          "instructions": "1. Kıymayı tavaya alın ve suyunu çekene kadar (yaklaşık 10 dk) kavurun.\\n2. Soğanları ekleyip pembeleşinceye kadar 5 dakika daha kavurun.\\n3. ...",
           "prepTime": 30,
-          "difficulty": "Kolay", 
+          "difficulty": "Orta", 
           "category": "Ana Yemek"
         }
       ]
@@ -98,8 +98,9 @@ class RecipeImporterService {
         
         String content = data['candidates'][0]['content']['parts'][0]['text'];
         
+        // JSON bloğunu metnin içinden ayıkla
         final jsonMatch = RegExp(r'\[\s*\{.*?\}\s*\]', dotAll: true).firstMatch(content);
-
+        
         if (jsonMatch != null) {
           String cleanJson = jsonMatch.group(0)!;
           List<dynamic> recipesJson = jsonDecode(cleanJson);
@@ -108,11 +109,9 @@ class RecipeImporterService {
           if (collectionRef == null) return;
 
           final batch = _firestore.batch();
-          
+
           for (var item in recipesJson) {
-            // Kullanıcının kendi 'suggestions' koleksiyonuna ekle
-            final docRef = collectionRef.doc(); 
-            
+            final docRef = collectionRef.doc();
             batch.set(docRef, {
               'name': item['name'],
               'description': item['description'],
@@ -121,11 +120,11 @@ class RecipeImporterService {
               'prepTime': item['prepTime'],
               'difficulty': item['difficulty'],
               'category': item['category'],
-              'createdAt': FieldValue.serverTimestamp(), // Tarih de ekleyelim
+              'createdAt': FieldValue.serverTimestamp(),
             });
           }
           await batch.commit(); 
-          debugPrint("✅ Şef ${recipesJson.length} tarif önerdi (Kullanıcıya özel)!");
+          debugPrint("✅ Şef ${recipesJson.length} adet DETAYLI tarif önerdi!");
         }
       } else {
         throw Exception("API Hatası: ${response.statusCode}");
