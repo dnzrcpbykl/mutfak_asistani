@@ -10,23 +10,19 @@ class MarketService {
     return snapshot.docs.map((doc) => MarketPrice.fromFirestore(doc)).toList();
   }
 
-  // --- YENİ: FİYAT KAYDETME FONKSİYONU ---
-  // Fişten okunan fiyatı, diğer kullanıcıların da faydalanabileceği (veya senin referans alacağın) havuza atar.
+  // Fiyat Kaydetme Fonksiyonu
   Future<void> addPriceInfo(String ingredientName, String marketName, double price) async {
-    // Önce bu ürün ve market kombinasyonu var mı bakalım
     final query = await _firestore.collection('market_prices')
         .where('ingredientName', isEqualTo: ingredientName)
         .where('marketName', isEqualTo: marketName)
         .get();
 
     if (query.docs.isNotEmpty) {
-      // Varsa fiyatı güncelle
       await query.docs.first.reference.update({
         'price': price,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } else {
-      // Yoksa yeni ekle
       await _firestore.collection('market_prices').add({
         'ingredientName': ingredientName,
         'marketName': marketName,
@@ -35,43 +31,102 @@ class MarketService {
       });
     }
   }
-  // ---------------------------------------
 
   // Eksik maliyeti hesapla
   double calculateMissingCost(List<String> missingIngredients, List<MarketPrice> allPrices) {
     double totalCost = 0;
-    
     for (var missingItem in missingIngredients) {
-      // 1. Aranacak kelimeyi temizle (Örn: "Yarım Yağlı Süt" -> "yarım yağlı süt")
       String searchKey = missingItem.trim().toLowerCase();
       
-      // Fiyat listesinden uygun olanları filtrele
       final pricesForThis = allPrices.where((p) {
         String marketItemName = p.ingredientName.toLowerCase().trim();
-
-        // A) Tam Eşleşme (En Güvenli): "süt" == "süt"
         if (marketItemName == searchKey) return true;
-
-        // B) Kelime Bazlı Kontrol (Daha Akıllı):
-        // "Torku Süt" ismini kelimelere böl: ["torku", "süt"]
-        // Listede "süt" kelimesi bağımsız olarak var mı? EVET.
-        // "Sütlaç" kelimesi "süt" içerir mi? HAYIR (Kelime bütünlüğü bozulmaz).
         List<String> marketWords = marketItemName.split(' ');
         if (marketWords.contains(searchKey)) return true;
-        
-        // C) Tersine Kontrol: Kullanıcı "Torku Süt" yazdıysa, marketteki "Süt" fiyatını da kabul et
         List<String> searchWords = searchKey.split(' ');
         if (searchWords.contains(marketItemName)) return true;
-
         return false;
       }).toList();
 
       if (pricesForThis.isNotEmpty) {
-        // Bulunanlar arasından en ucuz fiyatı baz al
         pricesForThis.sort((a, b) => a.price.compareTo(b.price));
         totalCost += pricesForThis.first.price;
       }
     }
     return totalCost;
+  }
+
+  // Market Karşılaştırma (Tüm Liste)
+  Future<List<Map<String, dynamic>>> compareMarketsForList(List<String> itemNames) async {
+    if (itemNames.isEmpty) return [];
+    final allPrices = await getAllPrices();
+    final Set<String> markets = allPrices.map((e) => e.marketName).toSet();
+    List<Map<String, dynamic>> marketResults = [];
+
+    for (var market in markets) {
+      final marketPrices = allPrices.where((p) => p.marketName == market).toList();
+      double totalCost = 0.0;
+      int foundCount = 0;
+
+      for (var item in itemNames) {
+        String searchKey = item.trim().toLowerCase();
+        final matches = marketPrices.where((p) {
+          String pName = p.ingredientName.toLowerCase();
+          if (pName == searchKey) return true;
+          List<String> words = pName.split(' ');
+          return words.contains(searchKey);
+        }).toList();
+
+        if (matches.isNotEmpty) {
+          matches.sort((a, b) => a.price.compareTo(b.price));
+          totalCost += matches.first.price;
+          foundCount++;
+        }
+      }
+
+      if (foundCount > 0) {
+        marketResults.add({
+          'marketName': market,
+          'totalPrice': totalCost,
+          'foundItemCount': foundCount,
+          'missingItemCount': itemNames.length - foundCount
+        });
+      }
+    }
+    marketResults.sort((a, b) => (a['totalPrice'] as double).compareTo(b['totalPrice'] as double));
+    return marketResults;
+  }
+
+  // --- GÜNCELLENEN FONKSİYON: TÜM FİYATLARI LİSTELEME ---
+  // Tek bir ürün için bulunan TÜM market fiyatlarını liste olarak döner.
+  List<Map<String, dynamic>> findAllPricesFor(String itemName, List<MarketPrice> allPrices) {
+    String searchKey = itemName.trim().toLowerCase();
+    if (searchKey.isEmpty) return [];
+    
+    // Veritabanındaki tüm fiyatlar içinde bu ürünü arıyoruz
+    final matches = allPrices.where((p) {
+      String pName = p.ingredientName.toLowerCase().trim();
+      // 1. Tam eşleşme
+      if (pName == searchKey) return true;
+      // 2. Kelime bazlı
+      List<String> marketWords = pName.split(' ');
+      if (marketWords.contains(searchKey)) return true;
+      // 3. Tersi
+      List<String> searchWords = searchKey.split(' ');
+      if (searchWords.contains(pName)) return true;
+      
+      return false;
+    }).toList();
+
+    if (matches.isEmpty) return [];
+
+    // En ucuza göre sırala
+    matches.sort((a, b) => a.price.compareTo(b.price));
+
+    // Listeyi map listesine çevirip döndür
+    return matches.map((m) => {
+      'market': m.marketName,
+      'price': m.price,
+    }).toList();
   }
 }
