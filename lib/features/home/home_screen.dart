@@ -11,6 +11,11 @@ import '../../core/widgets/empty_state_widget.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  // --- DÜZELTME: DIŞARIDAN ERİŞİLEBİLİR SİNYAL DEĞİŞKENİ ---
+  // 0: Kilerim, 1: Alışveriş Listesi
+  // Bu değişkeni statik yaparak Dashboard'dan erişilebilir kılıyoruz.
+  static final ValueNotifier<int> tabChangeNotifier = ValueNotifier<int>(0);
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -37,8 +42,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _mainTabController = TabController(length: 2, vsync: this);
+
+    // 1. BAŞLANGIÇ AYARI: Eğer dışarıdan "1" sinyali geldiyse direkt o sekmede başla
+    int initialIndex = HomeScreen.tabChangeNotifier.value;
+    if (initialIndex > 1) initialIndex = 0; // Hata koruması
+
+    _mainTabController = TabController(
+      length: 2, 
+      vsync: this, 
+      initialIndex: initialIndex
+    );
+    
     _mainTabController.addListener(() { setState(() {}); });
+
+    // 2. SENKRONİZASYON: Kullanıcı eliyle kaydırırsa sinyali güncelle
+    _mainTabController.addListener(_syncTabNotifier);
+    
+    // 3. DİNLEME: Dashboard'dan yeni bir emir gelirse sekmeyi değiştir
+    HomeScreen.tabChangeNotifier.addListener(_onExternalTabChange);
+
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
@@ -47,8 +69,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _pantryStream = _pantryService.getPantryItems();
   }
 
+  // Kullanıcı elle kaydırdığında çalışır
+  void _syncTabNotifier() {
+    if (_mainTabController.indexIsChanging) {
+      HomeScreen.tabChangeNotifier.value = _mainTabController.index;
+    }
+  }
+
+  // Dashboard'dan emir geldiğinde çalışır
+  void _onExternalTabChange() {
+    if (!mounted) return;
+    final targetIndex = HomeScreen.tabChangeNotifier.value;
+    // Eğer şu anki sekme, istenen sekme değilse oraya git
+    if (_mainTabController.index != targetIndex) {
+      _mainTabController.animateTo(targetIndex);
+    }
+  }
+
   @override
   void dispose() {
+    // Dinleyicileri temizle (Bellek sızıntısını önler)
+    HomeScreen.tabChangeNotifier.removeListener(_onExternalTabChange);
+    _mainTabController.removeListener(_syncTabNotifier);
+    
     _mainTabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -96,12 +139,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  // GÜNCELLENEN: STOK DÜŞME / EKLEME (Paket Sayısı Mantığıyla)
   void _showQuantityDialog(PantryItem item, bool isIncrement) {
     final controller = TextEditingController();
     double defaultAmount = 1.0;
     
-    // Eğer paketli ürünse, varsayılan olarak 1 paket miktarını öner
     if (item.pieceCount > 1 && item.quantity > 0) {
       defaultAmount = item.quantity / item.pieceCount;
     } else {
@@ -110,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     
     controller.text = _formatQuantity(defaultAmount);
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -143,29 +183,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               if (val != null && val > 0) {
                 double newQuantity = isIncrement ? item.quantity + val : item.quantity - val;
                 
-                // --- İNCE DETAY DÜZELTMESİ (Paket Sayısı Hesaplama) ---
                 int newPieceCount = item.pieceCount;
-                
                 if (item.pieceCount > 0) {
-                  // Tek bir paketin miktarı nedir? (Örn: 1.5kg / 3 paket = 0.5kg)
                   double singlePackageSize = item.quantity / item.pieceCount;
-                  
-                  // Eğer işlem yapılan miktar, 1 paket boyutuna çok yakınsa (0.1 tolerans)
-                  // Paket sayısını da güncelle.
                   if ((val - singlePackageSize).abs() < 0.1) {
-                     if (isIncrement) {
-                       newPieceCount++;
-                     } else {
-                       newPieceCount--; 
-                     }
+                     if (isIncrement) { newPieceCount++; } else { newPieceCount--; }
                   }
                 }
-                // -----------------------------
 
                 if (newQuantity <= 0) {
                    await _pantryService.deletePantryItem(item.id);
                 } else {
-                   // Yeni paket sayısını da gönderiyoruz
                    await _pantryService.updatePantryItemQuantity(
                      item.id, 
                      newQuantity, 
@@ -186,16 +214,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // GÜNCELLENEN: DÜZENLEME PENCERESİ (Paket Sayısı Alanı Eklendi)
   void _showEditDialog(PantryItem item) {
     final nameController = TextEditingController(text: item.ingredientName);
     final quantityController = TextEditingController(text: _formatQuantity(item.quantity));
     final unitController = TextEditingController(text: item.unit);
-    final pieceCountController = TextEditingController(text: item.pieceCount.toString()); // Yeni
-    
+    final pieceCountController = TextEditingController(text: item.pieceCount.toString());
     DateTime? tempDate = item.expirationDate;
     String selectedCategory = item.category;
-
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -231,7 +256,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // PAKET SAYISI AYARI
                   TextField(
                     controller: pieceCountController,
                     keyboardType: TextInputType.number,
@@ -274,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   final newName = nameController.text.trim();
                   final newQty = double.tryParse(quantityController.text.replaceAll(',', '.')) ?? item.quantity;
                   final newUnit = unitController.text.trim();
-                  final newPiece = int.tryParse(pieceCountController.text) ?? 1; // Yeni paket sayısı
+                  final newPiece = int.tryParse(pieceCountController.text) ?? 1; 
 
                   if (newName.isNotEmpty && newQty > 0) {
                     await _pantryService.updatePantryItemDetails(
@@ -284,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       unit: newUnit,
                       expirationDate: tempDate,
                       category: selectedCategory,
-                      pieceCount: newPiece, // Servise gönder
+                      pieceCount: newPiece, 
                     );
                     if (mounted) Navigator.pop(context);
                   }
@@ -541,7 +565,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // DÜZENLE BUTONU
                     InkWell(
                       onTap: () => _showEditDialog(item),
                       borderRadius: BorderRadius.circular(20),

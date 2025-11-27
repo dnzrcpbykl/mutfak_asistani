@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import '../recipes/recipe_recommendation_screen.dart';
 import '../profile/profile_screen.dart';
+import 'dashboard_screen.dart'; // EKLENDİ
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -13,28 +14,35 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
 
-  // Sayfaların Listesi
-  final List<Widget> _pages = [
-    const HomeScreen(),                // 0: Kiler
-    const RecipeRecommendationScreen(), // 1: Şef/Tarifler
-    const ProfileScreen(),             // 2: Profil
-  ];
+  // Sayfa değiştirme fonksiyonu (Dashboard'dan erişmek için)
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Sayfaları build metodunun içinde tanımlıyoruz ki context ve fonksiyonlara erişebilsinler
+    final List<Widget> pages = [
+      DashboardScreen(onTabChange: _changeTab), // 0: Ana Sayfa
+      const HomeScreen(),                       // 1: Kiler & Alışveriş
+      const RecipeRecommendationScreen(),       // 2: Şef
+      const ProfileScreen(),                    // 3: Profil
+    ];
+
     return Scaffold(
-      // Seçili sayfayı göster
-      body: _pages[_currentIndex],
+      body: pages[_currentIndex],
       
-      // Alt Menü
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onDestinationSelected: _changeTab,
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Ana Sayfa',
+          ),
           NavigationDestination(
             icon: Icon(Icons.kitchen_outlined),
             selectedIcon: Icon(Icons.kitchen),

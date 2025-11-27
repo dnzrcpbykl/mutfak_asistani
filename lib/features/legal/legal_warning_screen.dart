@@ -34,17 +34,20 @@ Uygulama içerisinde gösterilen market logoları (BİM, A101, Şok, Migros vb.)
 
   Future<void> _acceptTerms() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('acceptedLegalTerms_v1', true); // Kayıt edildi
+    await prefs.setBool('acceptedLegalTerms_v1', true); // Yasal onayı kaydet
+
+    // DÜZELTME BURADA: 
+    // Ezbere 'true' göndermek yerine, kullanıcının gerçekten tanıtımı görüp görmediğini kontrol ediyoruz.
+    // İlk açılışta bu değer henüz 'false' olduğu için, yönlendirdiğimizde Tanıtım Ekranı açılacak.
+    final bool currentSeenOnboarding = prefs.getBool('seenOnboarding') ?? false;
 
     if (!mounted) return;
     
-    // --- DÜZELTİLEN KISIM BURASI ---
-    // Ana uygulamayı yeniden başlatırken 'acceptedLegal: true' olarak gönderiyoruz.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => const MutfakAsistaniApp(
-          seenOnboarding: true, 
-          acceptedLegal: true, // <--- EKLENDİ (Hata bu satırın eksikliğinden kaynaklanıyordu)
+        builder: (context) => MutfakAsistaniApp(
+          seenOnboarding: currentSeenOnboarding, // Sabit 'true' yerine gerçek değeri gönderdik
+          acceptedLegal: true, 
         )
       ),
     );

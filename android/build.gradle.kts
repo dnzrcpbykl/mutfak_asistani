@@ -17,6 +17,14 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    tasks.withType<JavaCompile> {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
+        // Eğer üstteki satırlar hata verirse alternatif olarak şunu kullanabilirsin:
+        // options.release.set(17) 
+        options.compilerArgs.add("-Xlint:-options")
+    }
 }
 
 val newBuildDir: Directory =
