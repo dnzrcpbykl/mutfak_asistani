@@ -144,8 +144,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final textTheme = theme.textTheme;
 
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Center(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -289,10 +291,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
             ],
           ),
         ),
       ),
+      )
     );
   }
 

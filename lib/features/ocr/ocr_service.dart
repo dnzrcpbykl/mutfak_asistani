@@ -104,11 +104,20 @@ class OCRService {
         if (data['candidates'] == null || (data['candidates'] as List).isEmpty) return {};
 
         String content = data['candidates'][0]['content']['parts'][0]['text'];
-        
-        final jsonMatch = RegExp(r'\{[\s\S]*\}', dotAll: true).firstMatch(content);
 
-        if (jsonMatch != null) {
-          String cleanJson = jsonMatch.group(0)!;
+        // 1. ADIM: Markdown kod bloklarını temizle (```json ve ``` ibarelerini sil)
+        content = content.replaceAll(RegExp(r'^```json', multiLine: true), '')
+                        .replaceAll(RegExp(r'^```', multiLine: true), '')
+                        .trim();
+
+        // 2. ADIM: İlk '{' ve son '}' karakterlerini bulup arasını al (Baştaki/sondaki gevezelikleri at)
+        int startIndex = content.indexOf('{');
+        int endIndex = content.lastIndexOf('}');
+
+        if (startIndex != -1 && endIndex != -1) {
+          // Sadece temiz JSON kısmını kesip alıyoruz
+          String cleanJson = content.substring(startIndex, endIndex + 1);
+          
           try {
             Map<String, dynamic> resultData = jsonDecode(cleanJson);
             lastScannedResult = resultData;
@@ -116,10 +125,11 @@ class OCRService {
             return resultData;
           } catch (e) {
             debugPrint("❌ JSON Parse Hatası: $e");
+            // Hata durumunda boş dönmek yerine log basıyoruz
             return {};
           }
         } else {
-          debugPrint("❌ JSON bulunamadı.");
+          debugPrint("❌ JSON formatı bulunamadı. Gelen Ham Veri: $content");
           return {};
         }
       } else {

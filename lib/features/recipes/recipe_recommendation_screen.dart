@@ -273,7 +273,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     label: const Text("HER ŞEY HAZIR, PİŞİRMEYE BAŞLA!", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
-                SizedBox(height: MediaQuery.of(context).padding.bottom), 
+                SizedBox(height: MediaQuery.of(context).padding.bottom + 20), 
               ],
             ),
           );

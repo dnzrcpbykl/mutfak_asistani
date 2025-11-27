@@ -283,7 +283,9 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text("Ürün Ekle")),
-      body: _isLoading
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: _isLoading
           ? Center(child: CircularProgressIndicator(color: colorScheme.primary))
           : Padding(
               padding: const EdgeInsets.all(16.0),
@@ -434,6 +436,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                 ),
               ),
             ),
+      )
     );
   }
 }

@@ -47,11 +47,13 @@ flutter_launcher_icons:
   min_sdk_android: 21 
 
 flutter_native_splash:
-  color: "#FFD1B3" # İkonunun arka plan tonuna yakın renk kodu
+  color: "#1A1A2E"
   image: assets/icon.png
+  fullscreen: true
   android_12:
     image: assets/icon.png
-    color: "#FFD1B3" # Android 12 için de aynı renk
+    color: "#1A1A2E"
+    icon_background_color: "#1A1A2E" 
 
 # Flutter'ın kendi konfigürasyon bloğu
 flutter:

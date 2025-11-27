@@ -40,17 +40,34 @@ class MarketService {
   // Eksik maliyeti hesapla
   double calculateMissingCost(List<String> missingIngredients, List<MarketPrice> allPrices) {
     double totalCost = 0;
+    
     for (var missingItem in missingIngredients) {
+      // 1. Aranacak kelimeyi temizle (Örn: "Yarım Yağlı Süt" -> "yarım yağlı süt")
       String searchKey = missingItem.trim().toLowerCase();
       
+      // Fiyat listesinden uygun olanları filtrele
       final pricesForThis = allPrices.where((p) {
-        String marketItemName = p.ingredientName.toLowerCase();
-        // Basit içerir kontrolü
-        return marketItemName.contains(searchKey) || searchKey.contains(marketItemName);
+        String marketItemName = p.ingredientName.toLowerCase().trim();
+
+        // A) Tam Eşleşme (En Güvenli): "süt" == "süt"
+        if (marketItemName == searchKey) return true;
+
+        // B) Kelime Bazlı Kontrol (Daha Akıllı):
+        // "Torku Süt" ismini kelimelere böl: ["torku", "süt"]
+        // Listede "süt" kelimesi bağımsız olarak var mı? EVET.
+        // "Sütlaç" kelimesi "süt" içerir mi? HAYIR (Kelime bütünlüğü bozulmaz).
+        List<String> marketWords = marketItemName.split(' ');
+        if (marketWords.contains(searchKey)) return true;
+        
+        // C) Tersine Kontrol: Kullanıcı "Torku Süt" yazdıysa, marketteki "Süt" fiyatını da kabul et
+        List<String> searchWords = searchKey.split(' ');
+        if (searchWords.contains(marketItemName)) return true;
+
+        return false;
       }).toList();
 
       if (pricesForThis.isNotEmpty) {
-        // En ucuz fiyatı baz al
+        // Bulunanlar arasından en ucuz fiyatı baz al
         pricesForThis.sort((a, b) => a.price.compareTo(b.price));
         totalCost += pricesForThis.first.price;
       }

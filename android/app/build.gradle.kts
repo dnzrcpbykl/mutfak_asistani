@@ -17,7 +17,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17" // Burası basitleştirildi
     }
 
     defaultConfig {
@@ -27,6 +27,9 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // DÜZELTME 1: Eşittir işareti eklendi (Kotlin DSL kuralı)
+        multiDexEnabled = true 
     }
 
     buildTypes {
@@ -35,17 +38,21 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
             
-            // --- DÜZELTİLEN KISIMLAR (KOTLIN DSL) ---
-            isMinifyEnabled = false      // Groovy'de: minifyEnabled false
-            isShrinkResources = false    // Groovy'de: shrinkResources false
+            isMinifyEnabled = false
+            isShrinkResources = false
             
-            // Kotlin'de çift tırnak (") kullanılır, tek tırnak (') hata verir.
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
 
+// DÜZELTME 2: Dependencies bloğu android bloğunun DIŞINA taşındı
+dependencies {
+    // DÜZELTME 3: Çift tırnak ve parantez kullanıldı.
+    // DÜZELTME 4: Eski 'com.android.support' yerine güncel 'androidx' kütüphanesi eklendi.
+    implementation("androidx.multidex:multidex:2.0.1")
+}
+
 flutter {
     source = "../.."
 }
-

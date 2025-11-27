@@ -41,9 +41,23 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
     await _flutterTts.setSpeechRate(0.5);
     await _flutterTts.setPitch(1.0);
 
-    _flutterTts.setStartHandler(() => setState(() => _isSpeaking = true));
-    _flutterTts.setCompletionHandler(() => setState(() => _isSpeaking = false));
-    _flutterTts.setErrorHandler((msg) => setState(() => _isSpeaking = false));
+    _flutterTts.setStartHandler(() {
+      if (mounted) { // KONTROL EKLENDİ: Ekran hala açık mı?
+        setState(() => _isSpeaking = true);
+      }
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      if (mounted) { // KONTROL EKLENDİ
+        setState(() => _isSpeaking = false);
+      }
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      if (mounted) { // KONTROL EKLENDİ
+        setState(() => _isSpeaking = false);
+      }
+    });
   }
 
   Future<void> _speakStep({String? customText}) async {

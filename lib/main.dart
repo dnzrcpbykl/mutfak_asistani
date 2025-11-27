@@ -19,11 +19,12 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   // Eğer daha önce kayıt yoksa varsayılan olarak 'false' (görülmedi) kabul et
   final bool seenOnboarding = prefs.getBool('seenOnboarding') ?? false;
+  final bool isDarkMode = prefs.getBool('isDarkMode') ?? true;
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeNotifier()),
+        ChangeNotifierProvider(create: (_) => ThemeNotifier(isDarkMode)),
         ChangeNotifierProvider(create: (_) => RecipeProvider()),
       ],
       // 2. Çektiğimiz 'seenOnboarding' verisini uygulamaya gönderiyoruz
@@ -58,19 +59,17 @@ class MutfakAsistaniApp extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
              return const Scaffold(body: Center(child: CircularProgressIndicator()));
           }
+
+          if (!seenOnboarding) {
+            return const OnboardingScreen();
+          }
           
-          // A. Kullanıcı zaten giriş yapmışsa direkt Ana Ekrana
           if (snapshot.hasData) {
             return const MainLayout();
           }
           
-          // B. Giriş yapmamışsa ve Tanıtımı GÖRMEMİŞSE -> Tanıtıma
-          if (!seenOnboarding) {
-            return const OnboardingScreen();
-          }
-
-          // C. Tanıtımı görmüş ama giriş yapmamışsa -> Giriş Ekranına
           return const LoginScreen();
+          
         },
       ),
     );

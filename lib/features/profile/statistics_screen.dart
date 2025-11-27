@@ -65,7 +65,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       }
 
       // Geçmiş tüketim verilerini de ekleyelim (Logladıklarımız)
-      final historySnapshot = await _pantryService.historyRef.get();
+      final now = DateTime.now();
+      final startOfYear = DateTime(now.year, 1, 1); // Bu yılın 1 Ocak tarihi
+
+      final historySnapshot = await _pantryService.historyRef
+          .where('consumedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+          .get();
       for (var doc in historySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         // Eğer fiyat verisi varsa
