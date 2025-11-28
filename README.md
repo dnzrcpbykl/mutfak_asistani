@@ -23,7 +23,7 @@ Buzdolabındaki malzemeleri söyle ya da market fişini okut, gerisini bize bır
 
 ## Ekran Görüntüleri
 
-<img src="screenshots/1.png" width="32%" /> <img src="screenshots/2.png" width="32%" /> <img src="screenshots/3.png" width="32%" />
+<img src="assets/onboarding2.png" width="32%" />
 
 *(Daha fazla ekran görüntüsü yakında eklenecek)*
 
