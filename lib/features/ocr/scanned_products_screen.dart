@@ -115,7 +115,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
         DocumentSnapshot? matchingDoc;
         try {
           matchingDoc = existingPantryItems.firstWhere((doc) {
-            final data = doc.data() as PantryItem;
+            final data = doc.data();
             return data.ingredientName.toLowerCase() == ingredientName.toLowerCase() &&
                    data.unit.toLowerCase() == unit.toLowerCase();
           });

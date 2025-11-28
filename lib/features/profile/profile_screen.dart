@@ -1,3 +1,5 @@
+// lib/features/profile/profile_screen.dart
+
 import 'dart:convert'; // Resim çözmek için
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,7 +13,9 @@ import '../auth/login_screen.dart';
 import 'saved_recipes_screen.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart'; 
-import 'statistics_screen.dart'; // <--- YENİ EKRAN EKLENDİ
+import 'statistics_screen.dart'; 
+import 'household_screen.dart'; // Aile ekranı
+import 'premium_screen.dart'; // Premium ekranı
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -50,9 +54,12 @@ class ProfileScreen extends StatelessWidget {
               // Varsayılanlar
               String displayName = user?.email ?? "Misafir";
               ImageProvider? profileImage;
+              bool isPremium = false;
 
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
+                isPremium = data['isPremium'] ?? false;
+                
                 // İsim Birleştirme
                 if (data['name'] != null) {
                   displayName = "${data['name']} ${data['surname'] ?? ''}";
@@ -72,7 +79,7 @@ class ProfileScreen extends StatelessWidget {
                 children: [
                   const SizedBox(height: 30),
                   
-                  // --- PROFİL RESMİ ---
+                  // --- PROFİL RESMİ VE İSİM ---
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -125,6 +132,41 @@ class ProfileScreen extends StatelessWidget {
                           displayName, 
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
                         ),
+                        
+                        const SizedBox(height: 8),
+                        
+                        // --- PREMIUM ROZETİ VEYA SATIN AL BUTONU ---
+                        if (isPremium)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.amber),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.star, color: Colors.amber, size: 16),
+                                SizedBox(width: 5),
+                                Text("Premium Üye", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PremiumScreen())),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.amber,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            icon: const Icon(Icons.diamond, size: 18),
+                            label: const Text("Premium'a Geç"),
+                          ),
+                        // ----------------------------------------------
+                        
                         const SizedBox(height: 8),
                         const Text(
                           "Profili Düzenle", 
@@ -148,7 +190,19 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedRecipesScreen())),
                   ),
 
-                  // 2. Tema Değiştirme
+                  // 2. Ailem & Ortak Kiler (YENİ EKLENEN)
+                  _buildProfileTile(
+                    context, 
+                    icon: Icons.family_restroom, 
+                    color: Colors.orange, 
+                    title: "Ailem & Ortak Kiler",
+                    tileColor: tileColor,
+                    textColor: textColor,
+                    borderColor: borderColor,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const HouseholdScreen())), 
+                  ),
+
+                  // 3. Tema Değiştirme
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
                     decoration: BoxDecoration(
@@ -174,6 +228,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
 
+                  // 4. İstatistik
                   _buildProfileTile(
                     context, 
                     icon: Icons.bar_chart, 
@@ -182,10 +237,10 @@ class ProfileScreen extends StatelessWidget {
                     tileColor: tileColor,
                     textColor: textColor,
                     borderColor: borderColor,
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StatisticsScreen())), // <--- YÖNLENDİRME
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StatisticsScreen())), 
                   ),
 
-                  // 3. Ayarlar (ARTIK ÇALIŞIYOR)
+                  // 5. Ayarlar
                   _buildProfileTile(
                     context, 
                     icon: Icons.settings, 
@@ -194,10 +249,10 @@ class ProfileScreen extends StatelessWidget {
                     tileColor: tileColor,
                     textColor: textColor,
                     borderColor: borderColor,
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen())), // <--- YÖNLENDİRME EKLENDİ
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen())), 
                   ),
 
-                  // 4. Çıkış Yap
+                  // 6. Çıkış Yap
                   _buildProfileTile(
                     context, 
                     icon: Icons.logout, 

@@ -1,4 +1,5 @@
-import 'dart:async'; // Timer için gerekli
+import 'dart:async';
+import 'dart:ui'; // FontFeature için gerekli
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -22,7 +23,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   // --- TTS (SES) DEĞİŞKENLERİ ---
   final FlutterTts _flutterTts = FlutterTts();
   bool _isSpeaking = false;
-
+  
   // --- TIMER (ZAMANLAYICI) DEĞİŞKENLERİ ---
   Timer? _countdownTimer;
   Duration _remainingTime = Duration.zero;
@@ -31,52 +32,72 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable();
+    WakelockPlus.enable(); // Ekran kapanmasın
     _steps = _parseInstructions(widget.recipe.instructions);
     _initTts();
   }
 
+  // --- DÜZELTİLEN TTS BAŞLATMA FONKSİYONU ---
   Future<void> _initTts() async {
-    await _flutterTts.setLanguage("tr-TR");
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.setPitch(1.0);
+    try {
+      // 1. Dil Ayarı (Bekleyerek)
+      await _flutterTts.setLanguage("tr-TR");
+      
+      // 2. Hız ve Ton
+      await _flutterTts.setSpeechRate(0.5); // 0.5 normal konuşma hızıdır
+      await _flutterTts.setPitch(1.0);
 
-    _flutterTts.setStartHandler(() {
-      if (mounted) { // KONTROL EKLENDİ: Ekran hala açık mı?
-        setState(() => _isSpeaking = true);
-      }
-    });
+      // 3. iOS için ses kategorisi (Videoları durdurmadan konuşsun)
+      await _flutterTts.setIosAudioCategory(
+          IosTextToSpeechAudioCategory.playback,
+          [
+            IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+          ],
+      );
 
-    _flutterTts.setCompletionHandler(() {
-      if (mounted) { // KONTROL EKLENDİ
-        setState(() => _isSpeaking = false);
-      }
-    });
+      // 4. Konuşma bittiğinde state'i güncelle (Daha kararlı yöntem)
+      await _flutterTts.awaitSpeakCompletion(true);
 
-    _flutterTts.setErrorHandler((msg) {
-      if (mounted) { // KONTROL EKLENDİ
-        setState(() => _isSpeaking = false);
-      }
-    });
+      _flutterTts.setStartHandler(() {
+        if (mounted) setState(() => _isSpeaking = true);
+      });
+
+      _flutterTts.setCompletionHandler(() {
+        if (mounted) setState(() => _isSpeaking = false);
+      });
+
+      _flutterTts.setErrorHandler((msg) {
+        if (mounted) setState(() => _isSpeaking = false);
+        debugPrint("TTS Hatası: $msg");
+      });
+      
+    } catch (e) {
+      debugPrint("TTS Başlatma Hatası: $e");
+    }
   }
 
+  // --- DÜZELTİLEN KONUŞMA FONKSİYONU ---
   Future<void> _speakStep({String? customText}) async {
     if (_isSpeaking) {
       await _flutterTts.stop();
+      if (mounted) setState(() => _isSpeaking = false);
     } else {
-      await _flutterTts.speak(customText ?? _steps[_currentStep]);
+      String textToSpeak = customText ?? _steps[_currentStep];
+      if (textToSpeak.isNotEmpty) {
+        await _flutterTts.speak(textToSpeak);
+      }
     }
   }
 
   // --- ZAMANLAYICI MANTIĞI ---
   void _startTimer(int minutes) {
     if (_countdownTimer != null) _countdownTimer!.cancel();
-    
     setState(() {
       _remainingTime = Duration(minutes: minutes);
       _isTimerRunning = true;
     });
-
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_remainingTime.inSeconds > 0) {
         setState(() {
@@ -187,7 +208,6 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: Text("Pişirme Modu", style: TextStyle(color: colorScheme.onSurface)),

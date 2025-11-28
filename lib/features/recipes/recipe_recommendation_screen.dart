@@ -1,19 +1,23 @@
+// lib/features/recipes/recipe_recommendation_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io'; 
+import 'dart:io';
 
 // Modeller
 import '../../core/models/recipe.dart';
 import '../../core/models/market_price.dart';
 
-// Servisler 
+// Servisler
 import '../pantry/pantry_service.dart';
 import '../market/market_service.dart';
 import '../shopping_list/shopping_service.dart';
 import 'recipe_service.dart';
 import 'recipe_importer_service.dart';
+import '../../core/utils/ad_service.dart'; // EKLENDİ
+import '../profile/profile_service.dart'; // EKLENDİ
 
-// Provider 
+// Provider
 import 'recipe_provider.dart';
 
 // Ekranlar
@@ -33,15 +37,233 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
   final MarketService _marketService = MarketService();
   final ShoppingService _shoppingService = ShoppingService();
   final RecipeImporterService _importer = RecipeImporterService();
+  final AdService _adService = AdService(); // EKLENDİ
+  final ProfileService _profileService = ProfileService(); // EKLENDİ
+  final TextEditingController _customPromptController = TextEditingController(); // EKLENDİ
 
   @override
   void initState() {
     super.initState();
+    _adService.loadRewardedAd(); // Reklamı hazırla
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
     });
   }
 
+  // --- İŞLEMİ BAŞLATAN MERKEZ ---
+  void _processRequest(String? presetPrompt, {String? customText}) async {
+    // Sayacı artır (Eğer Premium değilse)
+    await _profileService.incrementUsage();
+    
+    // AI Fonksiyonunu çağır
+    _startAiGeneration(presetPrompt ?? "Fark etmez", customInstruction: customText);
+  }
+
+  // --- YENİLENEN DİYALOG: PREMIUM & REKLAM KONTROLÜ ---
+  void _showPreferenceDialog() async {
+    // 1. Önce kullanıcının durumunu kontrol et
+    final status = await _profileService.checkUsageRights();
+    final bool isPremium = status['isPremium'];
+    final bool needsAd = status['needsAd'];
+    final bool canGenerate = status['canGenerate']; // Şu an kullanılmıyor ama ileride gerekebilir
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Klavye açılınca yukarı kaysın diye
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom, // Klavye payı
+            left: 20, right: 20, top: 20
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // BAŞLIK (Premium Rozetiyle)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Şef Menüyü Hazırlasın 👨‍🍳", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  if (isPremium) 
+                    const Chip(label: Text("PREMIUM", style: TextStyle(color: Colors.white, fontSize: 10)), backgroundColor: Colors.amber)
+                  else
+                    Chip(label: Text(needsAd ? "REKLAMLI" : "ÜCRETSİZ", style: const TextStyle(color: Colors.white, fontSize: 10)), backgroundColor: needsAd ? Colors.purple : Colors.green),
+                ],
+              ),
+              const SizedBox(height: 10),
+              
+              // AÇIKLAMA METNİ
+              if (!isPremium && needsAd)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [Icon(Icons.ondemand_video, size: 16, color: Colors.purple), SizedBox(width: 8), Expanded(child: Text("Günlük ücretsiz hakkın doldu. Yeni tarif için kısa bir reklam izlemelisin.", style: TextStyle(fontSize: 12)))]),
+                ),
+
+              const SizedBox(height: 15),
+
+              // --- PREMIUM ÖZEL ALAN (Serbest Metin) ---
+              if (isPremium) ...[
+                const Text("Sana Özel İstek:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: _customPromptController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: "Örn: Elimdeki tavukla, bol baharatlı ama içinde sarımsak olmayan bir fırın yemeği istiyorum...",
+                    border: OutlineInputBorder(),
+                    filled: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Center(child: Text("- VEYA HAZIRLARDAN SEÇ -", style: TextStyle(color: Colors.grey, fontSize: 10))),
+                const SizedBox(height: 10),
+              ],
+
+              // HAZIR BUTONLAR
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildPreferenceChip("🎲 Fark Etmez", "Genel, lezzetli öneriler sun.", isPremium, needsAd),
+                  _buildPreferenceChip("⚡ Hızlı & Pratik", "30 dakikayı geçmeyen, pratik tarifler.", isPremium, needsAd),
+                  _buildPreferenceChip("🥗 Sağlıklı", "Düşük kalorili, sağlıklı tarifler.", isPremium, needsAd),
+                  _buildPreferenceChip("🌶️ Acı Sever", "Bol baharatlı tarifler.", isPremium, needsAd),
+                  _buildPreferenceChip("🍲 Sulu Yemek", "Geleneksel Türk usulü tencere yemekleri.", isPremium, needsAd),
+                  _buildPreferenceChip("🍰 Tatlı Krizi", "Tatlı veya hamur işi tarifleri.", isPremium, needsAd),
+                ],
+              ),
+              
+              // EĞER PREMIUM İSE GÖNDER BUTONU (Textfield için)
+              if (isPremium)
+                Padding(
+                  padding: const EdgeInsets.only(top: 15),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        if (_customPromptController.text.isNotEmpty) {
+                          Navigator.pop(context);
+                          _processRequest(null, customText: _customPromptController.text);
+                        }
+                      },
+                      icon: const Icon(Icons.send),
+                      label: const Text("Özel İsteği Gönder"),
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 30),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Chip butonunun iç mantığı
+  Widget _buildPreferenceChip(String label, String promptValue, bool isPremium, bool needsAd) {
+    return ActionChip(
+      label: Text(label),
+      onPressed: () {
+        Navigator.pop(context);
+        
+        if (isPremium) {
+          // Premium ise direkt yap
+          _processRequest(promptValue);
+        } else {
+          // Premium değilse kontrol et
+          if (needsAd) {
+            // Reklam izlet, biterse işlemi yap
+            _adService.showRewardedAd(
+              onRewardEarned: () => _processRequest(promptValue)
+            );
+          } else {
+            // Hakkı var, direkt yap
+            _processRequest(promptValue);
+          }
+        }
+      },
+    );
+  }
+
+  // --- AI SÜRECİNİ BAŞLATAN FONKSİYON (GÜNCELLENDİ: HANE DESTEĞİ VE CUSTOM PROMPT) ---
+  Future<void> _startAiGeneration(String userPreference, {String? customInstruction}) async {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        throw SocketException("İnternet yok");
+      }
+    } on SocketException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İnternet bağlantısı yok!"), backgroundColor: Colors.red));
+      return; 
+    }
+    
+    // --- DÜZELTME: ARTIK HANE KİLERİNİ OKUYORUZ ---
+    final pantryRef = await _pantryService.getPantryCollection();
+    final pantrySnapshot = await pantryRef.get();
+    
+    final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();
+
+    if (myIngredients.isEmpty) {
+       if (!mounted) return;
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Önce kilerine malzeme eklemelisin! (Hane kilerin boş olabilir)"), backgroundColor: Colors.red));
+       return;
+    }
+
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: theme.cardTheme.color,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: colorScheme.primary, width: 1)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: colorScheme.primary),
+              const SizedBox(height: 20),
+              Text("Cyber Chef Menüyü Hazırlıyor...", style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text("Tercihine uygun tarifler seçiliyor...", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. AI Tarif Üretsin (Tercihle Birlikte)
+      // PARAMETRE EKLENDİ: customInstruction
+      await _importer.generateRecipesFromPantry(myIngredients, userPreference: userPreference, customInstruction: customInstruction);
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Yükleniyor'u kapat
+
+      // 2. Listeyi yenile
+      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
+
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
+    }
+  }
+
+  // ... (Geri kalan tüm yardımcı fonksiyonlar, temizleme, UI build vb. aynen kalıyor) ...
   String _cleanIngredientForShopping(String rawName) {
     String cleaned = rawName.replaceAll(RegExp(r'\s*\(.*?\)'), '');
     if (cleaned.contains(',')) {
@@ -86,124 +308,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         );
       }),
     );
-  }
-
-  // --- YENİ: TERCİH SEÇİM PENCERESİ ---
-  void _showPreferenceDialog() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.cardTheme.color,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Bugün canın ne çekiyor? 👨‍🍳", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text("Şef tarifleri senin moduna göre hazırlasın.", style: TextStyle(color: Colors.grey)),
-              const SizedBox(height: 20),
-              
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _buildPreferenceChip("🎲 Fark Etmez", "Genel, lezzetli öneriler sun."),
-                  _buildPreferenceChip("⚡ Hızlı & Pratik", "30 dakikayı geçmeyen, pratik tarifler."),
-                  _buildPreferenceChip("🥗 Sağlıklı & Diyet", "Düşük kalorili, sağlıklı sebze ağırlıklı tarifler."),
-                  _buildPreferenceChip("🍲 Sulu Yemek", "Geleneksel Türk usulü tencere yemekleri."),
-                  _buildPreferenceChip("🌶️ Acı & Baharatlı", "Bol baharatlı, iştah açıcı tarifler."),
-                  _buildPreferenceChip("🍰 Tatlı Krizi", "Tatlı veya hamur işi tarifleri."),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPreferenceChip(String label, String promptValue) {
-    return ActionChip(
-      label: Text(label),
-      onPressed: () {
-        Navigator.pop(context); // Pencereyi kapat
-        _startAiGeneration(promptValue); // AI'yı başlat
-      },
-    );
-  }
-
-  // --- AI SÜRECİNİ BAŞLATAN FONKSİYON ---
-  Future<void> _startAiGeneration(String userPreference) async {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    try {
-      final result = await InternetAddress.lookup('google.com');
-      if (result.isEmpty || result[0].rawAddress.isEmpty) {
-        throw SocketException("İnternet yok");
-      }
-    } on SocketException catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İnternet bağlantısı yok!"), backgroundColor: Colors.red));
-      return; 
-    }
-    
-    final pantrySnapshot = await _pantryService.pantryRef.get();
-    final myIngredients = pantrySnapshot.docs.map((doc) => doc.data().ingredientName).toList();
-
-    if (myIngredients.isEmpty) {
-       if (!mounted) return;
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Önce kilerine malzeme eklemelisin!"), backgroundColor: Colors.red));
-       return;
-    }
-
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Dialog(
-        backgroundColor: theme.cardTheme.color,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: colorScheme.primary, width: 1)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: colorScheme.primary),
-              const SizedBox(height: 20),
-              Text("Cyber Chef Menüyü Hazırlıyor...", style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text("Tercihine uygun tarifler seçiliyor...", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    try {
-      // 1. AI Tarif Üretsin (Tercihle Birlikte)
-      await _importer.generateRecipesFromPantry(myIngredients, userPreference: userPreference);
-      
-      if (!mounted) return;
-      Navigator.pop(context); // Yükleniyor'u kapat
-
-      // 2. Listeyi yenile
-      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
-
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
-    }
   }
 
   void _showPreparationSheet(BuildContext context, Recipe recipe) {
@@ -284,8 +388,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final recipeProvider = Provider.of<RecipeProvider>(context);
 
     return Scaffold(
@@ -307,14 +410,14 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         ],
       ),
       
-      // --- GÜNCELLENEN BUTON: Artık Dialog Açıyor ---
+      // --- BUTON İŞLEVİ DEĞİŞTİRİLDİ ---
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
         elevation: 4,
         icon: const Icon(Icons.auto_awesome),
         label: const Text("Şefe Sor (AI)", style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: _showPreferenceDialog, // <--- Burayı değiştirdik
+        onPressed: _showPreferenceDialog, 
       ),
 
       body: recipeProvider.isLoading

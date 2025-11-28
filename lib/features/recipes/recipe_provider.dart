@@ -22,12 +22,13 @@ class RecipeProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
-  // Getter metodları (Dışarıdan okumak için)
+  // Getter metodları
   List<Map<String, dynamic>> get recommendations => _recommendations;
   List<MarketPrice> get allPrices => _allPrices;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // Verileri çekip eşleşmeyi hesaplayan ana fonksiyon
   // Verileri çekip eşleşmeyi hesaplayan ana fonksiyon
   Future<void> fetchAndCalculateRecommendations() async {
     _isLoading = true;
@@ -35,44 +36,51 @@ class RecipeProvider extends ChangeNotifier {
     notifyListeners(); 
 
     try {
-      // 1. Tüm verileri paralel olarak çek
+      // 1. Kiler referansını al
+      final pantryCollectionRef = await _pantryService.getPantryCollection();
+
+      // 2. Tüm verileri paralel olarak çek
       final results = await Future.wait([
         _recipeService.getRecipes(),
         _marketService.getAllPrices(),
-        _pantryService.pantryRef.get(), // Kileri anlık çekiyoruz
+        pantryCollectionRef.get(), 
       ]);
 
       _allRecipes = results[0] as List<Recipe>;
       _allPrices = results[1] as List<MarketPrice>;
 
-      // Düzeltme: withConverter kullandığımız için gelen veri zaten PantryItem'dır.
       final pantrySnapshot = results[2] as QuerySnapshot<PantryItem>;
       final pantryItems = pantrySnapshot.docs
           .map((doc) => doc.data()) 
           .toList();
 
-      // 2. Eşleşme mantığını çalıştır
+      // 3. Eşleşme mantığını çalıştır
       _recommendations = _recipeService.matchRecipes(pantryItems, _allRecipes);
 
     } catch (e) {
-      _error = "Veriler yüklenirken hata oluştu: $e";
-      debugPrint("RecipeProvider Hatası: $e");
+      // --- HATA YÖNETİMİ ---
+      // Eğer kullanıcı haneden atıldıysa "permission-denied" hatası gelir.
+      // Bu durumda kırmızı ekran yerine boş liste gösterip geçiyoruz.
+      if (e.toString().contains('permission-denied') || e.toString().contains('PERMISSION_DENIED')) {
+        debugPrint("Erişim reddedildi (Haneden atılmış olabilir). Bireysele dönülüyor.");
+        _recommendations = []; // Listeyi boşalt
+        _error = null; // Hatayı kullanıcıya gösterme
+      } else {
+        _error = "Veriler yüklenirken hata oluştu: $e";
+        debugPrint("RecipeProvider Hatası: $e");
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // --- YENİ EKLENEN FONKSİYON ---
-  // Kullanıcı çıkış yaptığında tüm hafızayı temizler
   void clearData() {
     _allRecipes = [];
     _allPrices = [];
     _recommendations = [];
     _error = null;
     _isLoading = false;
-    
-    // UI'ya listenin boşaldığını haber ver
     notifyListeners();
   }
 }

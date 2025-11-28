@@ -1,45 +1,122 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
 
 class PantryService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // Malzemeler genel bir havuzdur, değişmez.
   CollectionReference<Ingredient> get ingredientsRef => 
       _firestore.collection('ingredients').withConverter<Ingredient>(
         fromFirestore: (snapshot, _) => Ingredient.fromFirestore(snapshot),
         toFirestore: (ingredient, _) => ingredient.toFirestore(),
       );
 
-  CollectionReference<PantryItem> get pantryRef {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) throw Exception("Kullanıcı girişi yapılmamış.");
-    return _firestore.collection('users').doc(userId).collection('pantry').withConverter<PantryItem>(
+  // --- DİNAMİK REFERANS BULUCU (KALP) ---
+  // Kullanıcı bir haneye üyeyse Hanenin koleksiyonunu, değilse Kendi koleksiyonunu döndürür.
+  Future<CollectionReference<PantryItem>> getPantryCollection() async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Kullanıcı girişi yapılmamış.");
+
+    // 1. Kullanıcının profilini kontrol et: Bir haneye üye mi?
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    
+    String collectionPath;
+    if (userDoc.exists && userDoc.data()!.containsKey('currentHouseholdId')) {
+      // EVET: Hanenin kilerine bağlan
+      String householdId = userDoc.data()!['currentHouseholdId'];
+      collectionPath = 'households/$householdId/pantry';
+    } else {
+      // HAYIR: Bireysel kilere bağlan (Eski yöntem)
+      collectionPath = 'users/${user.uid}/pantry';
+    }
+
+    return _firestore.collection(collectionPath).withConverter<PantryItem>(
       fromFirestore: (snapshot, _) => PantryItem.fromFirestore(snapshot),
       toFirestore: (item, _) => item.toFirestore(),
     );
   }
 
-  // --- YENİ: TÜKETİM GEÇMİŞİ KOLEKSİYONU ---
+  // Tüketim Geçmişi (Şimdilik bireysel kalabilir veya haneye taşınabilir, bireysel daha mantıklı)
   CollectionReference get historyRef {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final userId = _auth.currentUser?.uid;
     if (userId == null) throw Exception("Kullanıcı girişi yapılmamış.");
     return _firestore.collection('users').doc(userId).collection('consumption_history');
   }
+
+  // --- CRUD İŞLEMLERİ (Artık Dinamik) ---
 
   Future<void> addIngredientToSystem(Ingredient ingredient) async {
     await ingredientsRef.add(ingredient);
   }
 
   Future<void> addPantryItem(PantryItem item) async {
-    await pantryRef.add(item);
+    try {
+      final ref = await getPantryCollection(); // Nereye ekleyeceğini sor
+      await ref.add(item);
+    } on FirebaseException catch (e) {
+      // EĞER İZİN HATASI ALIRSAK (Evden atılmışız demektir)
+      if (e.code == 'permission-denied') {
+        debugPrint("🚨 Erişim reddedildi! Haneden atılmış olabilirim. Bireysele dönülüyor...");
+        
+        final user = _auth.currentUser;
+        if (user != null) {
+          // Kendi profilimdeki 'currentHouseholdId' alanını siliyorum
+          await _firestore.collection('users').doc(user.uid).update({
+            'currentHouseholdId': FieldValue.delete(),
+          });
+          
+          // İşlemi tekrar dene (Artık bireysele ekleyecek)
+          // Bu sefer bireysel koleksiyonu alıp oraya ekliyoruz
+          final personalRef = _firestore.collection('users/${user.uid}/pantry').withConverter<PantryItem>(
+            fromFirestore: (s, _) => PantryItem.fromFirestore(s),
+            toFirestore: (i, _) => i.toFirestore()
+          );
+          await personalRef.add(item);
+        }
+      } else {
+        rethrow; // Başka bir hataysa (internet vs.) fırlat
+      }
+    }
   }
 
+  // Dinamik Stream (Kullanıcı profili değişirse algılaması için StreamSwitch kullanılabilir ama MVP için bu yeterli)
+  // Dinamik Stream (GÜNCELLENDİ: Hata Yönetimi ve Broadcast Eklendi)
   Stream<List<PantryItem>> getPantryItems() {
-    return pantryRef.snapshots().map((snapshot) => 
-      snapshot.docs.map((doc) => doc.data()).toList()
-    );
+    final user = _auth.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return _firestore.collection('users').doc(user.uid).snapshots().asyncMap((userDoc) async {
+      String path;
+      // Kullanıcının evi var mı kontrol et
+      if (userDoc.exists && userDoc.data()!.containsKey('currentHouseholdId')) {
+        path = 'households/${userDoc.data()!['currentHouseholdId']}/pantry';
+      } else {
+        // Yoksa bireysel yol
+        path = 'users/${user.uid}/pantry';
+      }
+      
+      // HATA YÖNETİMİ: Eğer erişim reddedilirse (Permission Denied) boş liste dön
+      // Bu sayede kırmızı ekran yerine boş ekran görünür.
+      try {
+        return _firestore.collection(path)
+            .withConverter<PantryItem>(
+              fromFirestore: (s, _) => PantryItem.fromFirestore(s),
+              toFirestore: (i, _) => i.toFirestore())
+            .snapshots()
+            .map((snap) => snap.docs.map((d) => d.data()).toList())
+            // Hata yakalama (Permission Denied burada yakalanır)
+            .handleError((e) {
+              debugPrint("Pantry Stream Hatası (Normal olabilir): $e");
+              return <PantryItem>[]; 
+            });
+      } catch (e) {
+        return const Stream<List<PantryItem>>.empty();
+      }
+    }).asyncExpand((stream) => stream).asBroadcastStream(); // <-- ÖNEMLİ: Broadcast eklendi
   }
 
   Future<List<Ingredient>> searchIngredients(String query) async {
@@ -50,54 +127,51 @@ class PantryService {
     return snapshot.docs.map((doc) => doc.data()).toList();
   }
 
-  // --- GÜNCELLENEN: SİLERKEN GEÇMİŞE KAYDET ---
   Future<void> deletePantryItem(String itemId) async {
-    // 1. Önce silinecek öğenin verisini al
-    final doc = await pantryRef.doc(itemId).get();
+    final ref = await getPantryCollection();
+    final doc = await ref.doc(itemId).get();
+    
     if (doc.exists) {
       final item = doc.data()!;
-      // 2. Geçmişe (History) kaydet
       await historyRef.add({
         'name': item.ingredientName,
         'category': item.category,
         'quantity': item.quantity,
         'unit': item.unit,
         'price': item.price,
-        'consumedAt': FieldValue.serverTimestamp(), // Tüketilme tarihi
-        'type': 'deleted' // Tamamen bitti/silindi
+        'consumedAt': FieldValue.serverTimestamp(),
+        'type': 'deleted'
       });
+      await ref.doc(itemId).delete();
     }
-    // 3. Kilerden sil
-    await pantryRef.doc(itemId).delete();
   }
   
-  // --- GÜNCELLENEN: MİKTAR DÜŞERKEN GEÇMİŞE KAYDET ---
   Future<void> updatePantryItemQuantity(String itemId, double newQuantity, {int? newPieceCount}) async {
-    // Eskiyi alıp ne kadar düştüğünü hesaplayalım
-    final doc = await pantryRef.doc(itemId).get();
+    final ref = await getPantryCollection();
+    final doc = await ref.doc(itemId).get();
+
     if (doc.exists) {
       final oldItem = doc.data()!;
       double diff = oldItem.quantity - newQuantity;
-      
-      // Eğer miktar azaldıysa (Tüketim varsa)
+
       if (diff > 0) {
         await historyRef.add({
           'name': oldItem.ingredientName,
           'category': oldItem.category,
-          'quantity': diff, // Tüketilen miktar
+          'quantity': diff,
           'unit': oldItem.unit,
-          'price': (oldItem.price ?? 0) * (diff / oldItem.quantity), // Tüketilen kısmın maliyeti
+          'price': (oldItem.price ?? 0) * (diff / oldItem.quantity),
           'consumedAt': FieldValue.serverTimestamp(),
-          'type': 'consumed' // Kısmen kullanıldı
+          'type': 'consumed'
         });
       }
+      
+      final Map<String, dynamic> data = {'quantity': newQuantity};
+      if (newPieceCount != null) {
+        data['pieceCount'] = newPieceCount;
+      }
+      await ref.doc(itemId).update(data);
     }
-
-    final Map<String, dynamic> data = {'quantity': newQuantity};
-    if (newPieceCount != null) {
-      data['pieceCount'] = newPieceCount;
-    }
-    await pantryRef.doc(itemId).update(data);
   }
 
   Future<void> updatePantryItemDetails({
@@ -109,7 +183,8 @@ class PantryService {
     required String category,
     required int pieceCount,
   }) async {
-    await pantryRef.doc(itemId).update({
+    final ref = await getPantryCollection();
+    await ref.doc(itemId).update({
       'ingredientName': name,
       'quantity': quantity,
       'unit': unit,
@@ -120,7 +195,8 @@ class PantryService {
   }
 
   Future<void> consumeIngredients(List<String> ingredientNames) async {
-    final pantrySnapshot = await pantryRef.get();
+    final ref = await getPantryCollection();
+    final pantrySnapshot = await ref.get();
     final pantryItems = pantrySnapshot.docs.map((doc) => doc.data()).toList();
 
     for (String ingredientName in ingredientNames) {
@@ -128,7 +204,6 @@ class PantryService {
         final itemToUpdate = pantryItems.firstWhere(
           (item) => item.ingredientName.trim().toLowerCase() == ingredientName.trim().toLowerCase()
         );
-        
         if (itemToUpdate.quantity > 1) {
           await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1);
         } else {
@@ -138,5 +213,18 @@ class PantryService {
         continue;
       }
     }
+  }
+  
+  // Eski kodlarınızın kırılmaması için (Legacy Getter) - Ama içi boşaltıldı
+  // Dikkat: Bunu kullanan yerleri (StatisticsScreen ve RecipeProvider) düzeltmemiz gerekecek.
+  // Şimdilik hata vermemesi için "throw" yerine kullanıcı kilerini döndürüyoruz ama 
+  // DOĞRU OLAN: getPantryCollection() metodunu kullanmaktır.
+  CollectionReference<PantryItem> get pantryRef {
+     final user = _auth.currentUser;
+     if (user == null) throw Exception("User null");
+     return _firestore.collection('users').doc(user.uid).collection('pantry').withConverter<PantryItem>(
+        fromFirestore: (s, _) => PantryItem.fromFirestore(s),
+        toFirestore: (i, _) => i.toFirestore(),
+     );
   }
 }

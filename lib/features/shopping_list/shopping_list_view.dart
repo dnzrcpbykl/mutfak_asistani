@@ -13,10 +13,13 @@ class ShoppingListView extends StatefulWidget {
   State<ShoppingListView> createState() => _ShoppingListViewState();
 }
 
-class _ShoppingListViewState extends State<ShoppingListView> {
+class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepAliveClientMixin {
   final ShoppingService _service = ShoppingService();
   final MarketService _marketService = MarketService(); 
   final TextEditingController _controller = TextEditingController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   void _urunEkle() async {
     final text = _controller.text.trim();

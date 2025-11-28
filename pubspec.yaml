@@ -30,6 +30,10 @@ dependencies:
   shared_preferences: ^2.2.2
   url_launcher: ^6.2.5
   geolocator: ^10.1.0
+  cloud_functions: ^4.7.6
+  flutter_image_compress: ^2.1.0  # Bu satırı ekleyin/kontrol edin
+  path_provider: ^2.1.2
+  google_mobile_ads: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -62,8 +66,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
-    - assets/markets/
-    - .env # .env dosyasının buraya eklenmesi önemli!
+    - assets/markets/ # .env dosyasının buraya eklenmesi önemli!
   # Eğer başka asset'ler ekleyeceksen buraya ekleyebilirsin
   # assets:
   #   - images/

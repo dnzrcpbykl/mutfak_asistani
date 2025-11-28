@@ -30,8 +30,9 @@ class RecipeImporterService {
     debugPrint("🧹 Kullanıcının eski önerileri temizlendi.");
   }
 
-  // 2. Kilerdeki Malzemelere Göre Tarif Üret (GÜNCELLENDİ: userPreference eklendi)
-  Future<void> generateRecipesFromPantry(List<String> myIngredients, {String userPreference = "Fark etmez, genel öneriler ver."}) async {
+  // 2. Kilerdeki Malzemelere Göre Tarif Üret
+  // GÜNCELLEME: 'customInstruction' parametresi eklendi.
+  Future<void> generateRecipesFromPantry(List<String> myIngredients, {String userPreference = "Fark etmez, genel öneriler ver.", String? customInstruction}) async {
     // Önce temizlik
     await _clearOldRecipes();
 
@@ -41,7 +42,15 @@ class RecipeImporterService {
     }
 
     String ingredientsText = myIngredients.join(", ");
-    debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText | Tercih: $userPreference");
+    
+    // --- GÜNCELLENEN MANTIK BAŞLANGIÇ ---
+    // Eğer özel bir talimat (customInstruction) geldiyse onu kullan, yoksa buton seçimini (userPreference) kullan.
+    String finalUserRequest = (customInstruction != null && customInstruction.trim().isNotEmpty) 
+        ? "KULLANICININ ÖZEL VE KESİN İSTEĞİ: $customInstruction"
+        : "Kullanıcı Tercihi: $userPreference";
+    // ------------------------------------
+
+    debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText | İstek: $finalUserRequest");
 
     const String apiKey = Secrets.geminiApiKey;
     final url = Uri.parse(
@@ -49,12 +58,13 @@ class RecipeImporterService {
 
     final headers = {'Content-Type': 'application/json'};
 
-    // --- GÜNCELLENEN KİŞİSELLEŞTİRİLMİŞ PROMPT ---
+    // --- SENİN ORİJİNAL PROMPT YAPIN (KORUNDU) ---
+    // Sadece dinamik istek kısmı ($finalUserRequest) araya yerleştirildi.
     final prompt = '''
       Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin.
       Elimdeki malzemeler: [$ingredientsText]
       
-      **KULLANICI TERCİHİ (ÇOK ÖNEMLİ):** Kullanıcı şu tarz yemekler istiyor: "$userPreference".
+      **KULLANICI TERCİHİ (ÇOK ÖNEMLİ):** $finalUserRequest.
       Lütfen tarifleri seçerken BU TERCİHE ÖNCELİK VER.
       
       GÖREVİN:

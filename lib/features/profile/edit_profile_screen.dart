@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'profile_service.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -90,12 +92,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _getImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source, imageQuality: 50);
+    // 1. Resmi Seç (Burada kalite ayarı yapmıyoruz, orijinali alıyoruz)
+    final XFile? pickedFile = await picker.pickImage(source: source);
 
     if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
+      setState(() => _isLoading = true); // İşlem başlarken loading gösterelim
+
+      try {
+        // 2. Geçici dizini bul
+        final dir = await path_provider.getTemporaryDirectory();
+        // Yeni dosya yolu oluştur (sonuna .jpg ekleyerek)
+        final targetPath = '${dir.absolute.path}/temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        // 3. Resmi Sıkıştır ve Boyutlandır (Native İşlem)
+        final XFile? compressedFile = await FlutterImageCompress.compressAndGetFile(
+          pickedFile.path,
+          targetPath,
+          minWidth: 800, // Genişlik en fazla 800px olsun (Yeterli kalite)
+          minHeight: 800, // Yükseklik en fazla 800px olsun
+          quality: 70, // Kalite %70 olsun (Gözle görülür fark olmaz ama dosya boyutu uçar)
+          format: CompressFormat.jpeg,
+        );
+
+        if (compressedFile != null) {
+          setState(() {
+            _selectedImage = File(compressedFile.path);
+          });
+        }
+      } catch (e) {
+        debugPrint("Resim sıkıştırma hatası: $e");
+        // Hata olursa orijinali kullan (Yedek plan)
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 

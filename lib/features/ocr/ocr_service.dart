@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_image_compress/flutter_image_compress.dart'; // EKLENDİ: Sıkıştırma paketi
+import 'package:path_provider/path_provider.dart' as path_provider; // EKLENDİ: Dosya yolu için
 import '../../secrets.dart';
 
 class OCRService {
@@ -19,10 +21,38 @@ class OCRService {
     debugPrint("🚀 Cyber Chef Fişi Analiz Ediyor (Sadece Gıda & Doğru Model)...");
 
     try {
-      final bytes = await File(imagePath).readAsBytes();
+      // --- BELLEK YÖNETİMİ BAŞLANGIÇ: RESMİ SIKIŞTIRMA ---
+      // Resmi doğrudan belleğe yüklemek yerine önce sıkıştırıyoruz.
+      File fileToUpload;
+      try {
+        final dir = await path_provider.getTemporaryDirectory();
+        final targetPath = '${dir.absolute.path}/ocr_temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        final XFile? compressedFile = await FlutterImageCompress.compressAndGetFile(
+          imagePath,
+          targetPath,
+          minWidth: 1024, // Fiş okumak için 1024px yeterli (Gereksiz büyüklüğü engeller)
+          minHeight: 1024,
+          quality: 75,    // %75 kalite hem okunabilir hem az yer kaplar
+          format: CompressFormat.jpeg,
+        );
+
+        if (compressedFile != null) {
+          fileToUpload = File(compressedFile.path);
+          debugPrint("✅ Resim sıkıştırıldı. Orijinal: ${File(imagePath).lengthSync()} byte -> Yeni: ${fileToUpload.lengthSync()} byte");
+        } else {
+          fileToUpload = File(imagePath); // Sıkıştırma başarısızsa orijinali kullan
+        }
+      } catch (e) {
+        debugPrint("⚠️ Sıkıştırma hatası (önemsiz, orijinal dosya kullanılacak): $e");
+        fileToUpload = File(imagePath);
+      }
+      // --- BELLEK YÖNETİMİ BİTİŞ ---
+
+      // Artık sıkıştırılmış dosyayı okuyoruz
+      final bytes = await fileToUpload.readAsBytes();
       final base64Image = base64Encode(bytes);
       
-      // DÜZELTME: İsteğin üzerine model ismi güncellendi
       final url = Uri.parse(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=$_apiKey');
       
@@ -105,17 +135,16 @@ class OCRService {
 
         String content = data['candidates'][0]['content']['parts'][0]['text'];
 
-        // 1. ADIM: Markdown kod bloklarını temizle (```json ve ``` ibarelerini sil)
+        // 1. ADIM: Markdown kod bloklarını temizle
         content = content.replaceAll(RegExp(r'^```json', multiLine: true), '')
                         .replaceAll(RegExp(r'^```', multiLine: true), '')
                         .trim();
 
-        // 2. ADIM: İlk '{' ve son '}' karakterlerini bulup arasını al (Baştaki/sondaki gevezelikleri at)
+        // 2. ADIM: JSON'u ayıkla
         int startIndex = content.indexOf('{');
         int endIndex = content.lastIndexOf('}');
 
         if (startIndex != -1 && endIndex != -1) {
-          // Sadece temiz JSON kısmını kesip alıyoruz
           String cleanJson = content.substring(startIndex, endIndex + 1);
           
           try {
@@ -125,7 +154,6 @@ class OCRService {
             return resultData;
           } catch (e) {
             debugPrint("❌ JSON Parse Hatası: $e");
-            // Hata durumunda boş dönmek yerine log basıyoruz
             return {};
           }
         } else {

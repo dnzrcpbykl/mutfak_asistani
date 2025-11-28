@@ -11,76 +11,38 @@ import '../../core/widgets/empty_state_widget.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  // --- DÜZELTME: DIŞARIDAN ERİŞİLEBİLİR SİNYAL DEĞİŞKENİ ---
-  // 0: Kilerim, 1: Alışveriş Listesi
-  // Bu değişkeni statik yaparak Dashboard'dan erişilebilir kılıyoruz.
+  // Dashboard'dan erişim için
   static final ValueNotifier<int> tabChangeNotifier = ValueNotifier<int>(0);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late TabController _mainTabController;
-  final PantryService _pantryService = PantryService();
-  
-  late Stream<List<PantryItem>> _pantryStream;
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = "";
-
-  final List<String> _categories = [
-    "Tümü", 
-    "Meyve & Sebze",
-    "Et & Tavuk & Balık",
-    "Süt & Kahvaltılık",
-    "Temel Gıda & Bakliyat",
-    "Atıştırmalık",
-    "İçecekler",
-    "Diğer"
-  ];
 
   @override
   void initState() {
     super.initState();
-
-    // 1. BAŞLANGIÇ AYARI: Eğer dışarıdan "1" sinyali geldiyse direkt o sekmede başla
     int initialIndex = HomeScreen.tabChangeNotifier.value;
-    if (initialIndex > 1) initialIndex = 0; // Hata koruması
+    if (initialIndex > 1) initialIndex = 0;
 
-    _mainTabController = TabController(
-      length: 2, 
-      vsync: this, 
-      initialIndex: initialIndex
-    );
+    _mainTabController = TabController(length: 2, vsync: this, initialIndex: initialIndex);
     
-    _mainTabController.addListener(() { setState(() {}); });
-
-    // 2. SENKRONİZASYON: Kullanıcı eliyle kaydırırsa sinyali güncelle
+    // Senkronizasyon dinleyicileri
     _mainTabController.addListener(_syncTabNotifier);
-    
-    // 3. DİNLEME: Dashboard'dan yeni bir emir gelirse sekmeyi değiştir
     HomeScreen.tabChangeNotifier.addListener(_onExternalTabChange);
-
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim().toLowerCase();
-      });
-    });
-    _pantryStream = _pantryService.getPantryItems();
   }
 
-  // Kullanıcı elle kaydırdığında çalışır
   void _syncTabNotifier() {
     if (_mainTabController.indexIsChanging) {
       HomeScreen.tabChangeNotifier.value = _mainTabController.index;
     }
   }
 
-  // Dashboard'dan emir geldiğinde çalışır
   void _onExternalTabChange() {
     if (!mounted) return;
     final targetIndex = HomeScreen.tabChangeNotifier.value;
-    // Eğer şu anki sekme, istenen sekme değilse oraya git
     if (_mainTabController.index != targetIndex) {
       _mainTabController.animateTo(targetIndex);
     }
@@ -88,15 +50,109 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    // Dinleyicileri temizle (Bellek sızıntısını önler)
     HomeScreen.tabChangeNotifier.removeListener(_onExternalTabChange);
     _mainTabController.removeListener(_syncTabNotifier);
-    
     _mainTabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.kitchen, color: colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text("Mutfak Asistanı"),
+          ],
+        ),
+        automaticallyImplyLeading: false,
+        bottom: TabBar(
+          controller: _mainTabController,
+          indicatorColor: colorScheme.primary, 
+          labelColor: colorScheme.primary, 
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(text: "Kilerim"),
+            Tab(text: "Alışveriş"),
+          ],
+        ),
+      ),
+      
+      body: TabBarView(
+        controller: _mainTabController,
+        children: const [
+          PantryTab(), // YENİ: Kiler görünümü artık kendi sınıfında
+          ShoppingListView(), // Alışveriş listesi
+        ],
+      ),
+
+      floatingActionButton: ValueListenableBuilder<int>(
+        valueListenable: HomeScreen.tabChangeNotifier,
+        builder: (context, value, child) {
+          return value == 0
+            ? FloatingActionButton(
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary, 
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const AddPantryItemScreen()),
+                  );
+                },
+                child: const Icon(Icons.add),
+              )
+            : const SizedBox.shrink(); // Alışveriş listesindeyken gizle (kendi butonu var)
+        },
+      )
+    );
+  }
+}
+
+// --- YENİ SINIF: PantryTab (Kiler Sekmesi) ---
+// Bu sınıf sayesinde sekme değişse bile veriler silinmez (KeepAlive)
+class PantryTab extends StatefulWidget {
+  const PantryTab({super.key});
+
+  @override
+  State<PantryTab> createState() => _PantryTabState();
+}
+
+class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixin {
+  final PantryService _pantryService = PantryService();
+  late Stream<List<PantryItem>> _pantryStream;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
+  final List<String> _categories = [
+    "Tümü", "Meyve & Sebze", "Et & Tavuk & Balık", "Süt & Kahvaltılık",
+    "Temel Gıda & Bakliyat", "Atıştırmalık", "İçecekler", "Diğer"
+  ];
+
+  // BU SATIR ÇOK ÖNEMLİ: Sayfayı canlı tutar
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pantryStream = _pantryService.getPantryItems();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim().toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  // ... (Yardımcı fonksiyonlar buraya taşındı) ...
   Color _getExpirationColor(DateTime? expirationDate) {
     if (expirationDate == null) return AppTheme.neonCyan;
     final now = DateTime.now();
@@ -132,25 +188,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   String _formatQuantity(double quantity) {
-    if (quantity % 1 == 0) {
-      return quantity.toInt().toString();
-    } else {
-      return quantity.toStringAsFixed(2);
-    }
+    if (quantity % 1 == 0) return quantity.toInt().toString();
+    return quantity.toStringAsFixed(2);
   }
 
   void _showQuantityDialog(PantryItem item, bool isIncrement) {
     final controller = TextEditingController();
     double defaultAmount = 1.0;
-    
     if (item.pieceCount > 1 && item.quantity > 0) {
       defaultAmount = item.quantity / item.pieceCount;
     } else {
       if (item.unit.toLowerCase() == 'gr' || item.unit.toLowerCase() == 'g') defaultAmount = 100;
       if (item.unit.toLowerCase() == 'ml') defaultAmount = 200;
     }
-    
     controller.text = _formatQuantity(defaultAmount);
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -182,23 +234,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final val = double.tryParse(controller.text.replaceAll(',', '.'));
               if (val != null && val > 0) {
                 double newQuantity = isIncrement ? item.quantity + val : item.quantity - val;
-                
                 int newPieceCount = item.pieceCount;
                 if (item.pieceCount > 0) {
                   double singlePackageSize = item.quantity / item.pieceCount;
                   if ((val - singlePackageSize).abs() < 0.1) {
-                     if (isIncrement) { newPieceCount++; } else { newPieceCount--; }
+                     if (isIncrement) newPieceCount++; else newPieceCount--;
                   }
                 }
-
                 if (newQuantity <= 0) {
                    await _pantryService.deletePantryItem(item.id);
                 } else {
-                   await _pantryService.updatePantryItemQuantity(
-                     item.id, 
-                     newQuantity, 
-                     newPieceCount: newPieceCount > 0 ? newPieceCount : 1
-                   );
+                   await _pantryService.updatePantryItemQuantity(item.id, newQuantity, newPieceCount: newPieceCount > 0 ? newPieceCount : 1);
                 }
                 if (context.mounted) Navigator.pop(context);
               }
@@ -221,6 +267,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final pieceCountController = TextEditingController(text: item.pieceCount.toString());
     DateTime? tempDate = item.expirationDate;
     String selectedCategory = item.category;
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -232,38 +279,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: "Ürün Adı"),
-                  ),
+                  TextField(controller: nameController, decoration: const InputDecoration(labelText: "Ürün Adı")),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: quantityController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: "Toplam Miktar"),
-                        ),
-                      ),
+                      Expanded(child: TextField(controller: quantityController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: "Toplam Miktar"))),
                       const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: unitController,
-                          decoration: const InputDecoration(labelText: "Birim"),
-                        ),
-                      ),
+                      Expanded(child: TextField(controller: unitController, decoration: const InputDecoration(labelText: "Birim"))),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: pieceCountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Kaç Paket? (Opsiyonel)",
-                      helperText: "Örn: 3 paket makarna toplam 1.5kg ise buraya 3 yaz."
-                    ),
-                  ),
+                  TextField(controller: pieceCountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Kaç Paket? (Opsiyonel)")),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     value: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
@@ -324,55 +350,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // KEEP ALIVE İÇİN ZORUNLU
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.kitchen, color: colorScheme.primary),
-            const SizedBox(width: 8),
-            const Text("Mutfak Asistanı"),
-          ],
-        ),
-        automaticallyImplyLeading: false,
-        bottom: TabBar(
-          controller: _mainTabController,
-          indicatorColor: colorScheme.primary, 
-          labelColor: colorScheme.primary, 
-          unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(text: "Kilerim"),
-            Tab(text: "Alışveriş"),
-          ],
-        ),
-      ),
-      
-      body: TabBarView(
-        controller: _mainTabController,
-        children: [
-          _buildNestedPantryView(),
-          const ShoppingListView(),
-        ],
-      ),
 
-      floatingActionButton: _mainTabController.index == 0
-          ? FloatingActionButton(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary, 
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const AddPantryItemScreen()),
-                );
-              },
-              child: const Icon(Icons.add),
-            )
-          : null, 
-    );
-  }
-
-  Widget _buildNestedPantryView() {
-    final colorScheme = Theme.of(context).colorScheme;
     return StreamBuilder<List<PantryItem>>(
       stream: _pantryStream,
       builder: (context, snapshot) {
@@ -382,7 +362,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
 
         final allItems = snapshot.data ?? [];
-
         final bool isSearching = _searchQuery.isNotEmpty;
 
         return Column(
@@ -396,23 +375,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   hintText: "Kilerde ara (Örn: Süt, Makarna)",
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchQuery.isNotEmpty 
-                    ? IconButton(
-                        icon: const Icon(Icons.clear), 
-                        onPressed: () {
-                          _searchController.clear();
-                          FocusScope.of(context).unfocus();
-                        }
-                      ) 
+                    ? IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchController.clear(); FocusScope.of(context).unfocus(); }) 
                     : null,
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                   filled: true,
-                  fillColor: Theme.of(context).brightness == Brightness.dark 
-                      ? Colors.white.withOpacity(0.05) 
-                      : Colors.grey.shade200,
+                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
                 ),
               ),
             ),
@@ -457,44 +425,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildCategoryList(String category, List<PantryItem> allItems) {
     final filteredItems = allItems.where((item) {
-      final matchesCategory = category == "Tümü" 
-          ? true 
-          : _normalizeCategory(item.category) == category;
-      
-      final matchesSearch = _searchQuery.isEmpty 
-          ? true 
-          : item.ingredientName.toLowerCase().replaceAll('ı', 'i').contains(_searchQuery.replaceAll('ı', 'i'));
-
+      final matchesCategory = category == "Tümü" ? true : _normalizeCategory(item.category) == category;
+      final matchesSearch = _searchQuery.isEmpty ? true : item.ingredientName.toLowerCase().replaceAll('ı', 'i').contains(_searchQuery.replaceAll('ı', 'i'));
       return matchesCategory && matchesSearch;
     }).toList();
 
     if (filteredItems.isEmpty) {
       if (_searchQuery.isNotEmpty) {
-        return const EmptyStateWidget(
-          icon: Icons.search_off,
-          message: "Sonuç Bulunamadı",
-          subMessage: "Farklı bir kelime deneyebilirsin.",
-        );
+        return const EmptyStateWidget(icon: Icons.search_off, message: "Sonuç Bulunamadı", subMessage: "Farklı bir kelime deneyebilirsin.");
       }
-      return EmptyStateWidget(
-        icon: Icons.kitchen,
-        message: "$category Rafı Boş",
-        subMessage: "Sağ alttaki (+) butonuyla ürün ekleyebilirsin.",
-      );
+      return EmptyStateWidget(icon: Icons.kitchen, message: "$category Rafı Boş", subMessage: "Sağ alttaki (+) butonuyla ürün ekleyebilirsin.");
     }
 
     return ListView.builder(
       itemCount: filteredItems.length,
-      padding: EdgeInsets.only(
-        bottom: 80 + MediaQuery.of(context).padding.bottom, 
-        top: 10
-      ),
+      padding: EdgeInsets.only(bottom: 80 + MediaQuery.of(context).padding.bottom, top: 10),
       itemBuilder: (context, index) {
         final item = filteredItems[index];
         return _buildPantryItemTile(item, Theme.of(context).colorScheme)
-            .animate(delay: (index * 50).ms)
-            .slideY(begin: 0.2, end: 0)
-            .fadeIn();
+            .animate(delay: (index * 50).ms).slideY(begin: 0.2, end: 0).fadeIn();
       },
     );
   }
@@ -529,19 +478,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    item.ingredientName, 
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: colorScheme.onSurface)
-                  ),
+                  Text(item.ingredientName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: colorScheme.onSurface)),
                   if (item.brand != null && item.brand!.isNotEmpty)
-                    Text(
-                      item.brand!, 
-                      style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)
-                    ),
-                  Text(
-                    quantityText, 
-                    style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)
-                  ),
+                    Text(item.brand!, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
+                  Text(quantityText, style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
             ),
@@ -552,61 +492,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: expirationColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: expirationColor.withOpacity(0.3))
-                    ),
-                    child: Text(
-                      DateFormat('dd/MM').format(item.expirationDate!),
-                      style: TextStyle(color: expirationColor, fontSize: 10, fontWeight: FontWeight.bold),
-                    ),
+                    decoration: BoxDecoration(color: expirationColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: expirationColor.withOpacity(0.3))),
+                    child: Text(DateFormat('dd/MM').format(item.expirationDate!), style: TextStyle(color: expirationColor, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    InkWell(
-                      onTap: () => _showEditDialog(item),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.edit, size: 18, color: Colors.blue),
-                      ),
-                    ),
+                    InkWell(onTap: () => _showEditDialog(item), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.edit, size: 18, color: Colors.blue))),
                     const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () => _showQuantityDialog(item, false),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.remove, size: 18, color: Colors.orange),
-                      ),
-                    ),
+                    InkWell(onTap: () => _showQuantityDialog(item, false), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.remove, size: 18, color: Colors.orange))),
                     const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () => _showQuantityDialog(item, true),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.add, size: 18, color: Colors.green),
-                      ),
-                    ),
+                    InkWell(onTap: () => _showQuantityDialog(item, true), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.add, size: 18, color: Colors.green))),
                     const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () => _pantryService.deletePantryItem(item.id),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                      ),
-                    ),
+                    InkWell(onTap: () => _pantryService.deletePantryItem(item.id), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.delete_outline, size: 18, color: Colors.red))),
                   ],
                 )
               ],
