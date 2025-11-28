@@ -1,14 +1,13 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.mutfak_asistani"
-    compileSdk = 36
+    compileSdk = 36 // Zorla 34 (En kararlı sürüm)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -17,42 +16,30 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17" // Burası basitleştirildi
+        jvmTarget = "17"
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.mutfak_asistani"
         minSdk = flutter.minSdkVersion
-        targetSdk = 36
+        targetSdk = 36 // Zorla 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-
-        // DÜZELTME 1: Eşittir işareti eklendi (Kotlin DSL kuralı)
+        
         multiDexEnabled = true 
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
-            
             isMinifyEnabled = false
             isShrinkResources = false
-            
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
 
-// DÜZELTME 2: Dependencies bloğu android bloğunun DIŞINA taşındı
 dependencies {
-    // DÜZELTME 3: Çift tırnak ve parantez kullanıldı.
-    // DÜZELTME 4: Eski 'com.android.support' yerine güncel 'androidx' kütüphanesi eklendi.
     implementation("androidx.multidex:multidex:2.0.1")
-}
-
-flutter {
-    source = "../.."
+    // Bu satır bazen 'resource not found' hatalarını çözer, çünkü eksik kaynakları tamamlar:
+    implementation("androidx.appcompat:appcompat:1.6.1") 
 }

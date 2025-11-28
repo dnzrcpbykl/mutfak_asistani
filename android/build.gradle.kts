@@ -1,14 +1,15 @@
+// Bu import, kütüphanelerin ayarlarına doğrudan erişmemizi sağlar
+import com.android.build.gradle.BaseExtension 
+
 buildscript {
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        // Android Gradle Plugin versiyonu projenle uyumlu olmalı,
-        // genellikle varsayılan ayarlarda bu blok gizli olabilir ama
-        // Firebase için şu satırı eklememiz şart:
         classpath("com.google.gms:google-services:4.4.2")
         classpath("com.android.tools.build:gradle:8.2.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0")
     }
 }
 
@@ -17,28 +18,24 @@ allprojects {
         google()
         mavenCentral()
     }
-
-    tasks.withType<JavaCompile> {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
-        // Eğer üstteki satırlar hata verirse alternatif olarak şunu kullanabilirsin:
-        // options.release.set(17) 
-        options.compilerArgs.add("-Xlint:-options")
-    }
 }
 
-val newBuildDir: Directory =
-    rootProject.layout.buildDirectory
-        .dir("../../build")
-        .get()
+val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 
 subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
-    project.evaluationDependsOn(":app")
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.application") || plugins.hasPlugin("com.android.library")) {
+            extensions.findByType<com.android.build.gradle.BaseExtension>()?.apply {
+                compileSdkVersion(36)
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

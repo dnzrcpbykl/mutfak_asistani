@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui'; // FontFeature için gerekli
+// FontFeature için gerekli
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';

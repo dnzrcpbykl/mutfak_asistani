@@ -101,8 +101,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildHeader(ColorScheme colorScheme) {
     String greeting = "Merhaba Şef! 👋";
     int hour = DateTime.now().hour;
-    if (hour < 12) greeting = "Günaydın Şef! 🍳";
-    else if (hour < 18) greeting = "İyi Günler Şef! ☀️";
+    if (hour < 12) {
+      greeting = "Günaydın Şef! 🍳";
+    } else if (hour < 18) greeting = "İyi Günler Şef! ☀️";
     else greeting = "İyi Akşamlar Şef! 🌙";
 
     return Container(

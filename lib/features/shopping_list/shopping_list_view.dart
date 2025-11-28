@@ -202,7 +202,7 @@ final ProfileService _profileService = ProfileService(); // EKLENDİ
                                                   // LOGO VARSA GÖSTER, YOKSA İKON
                                                   logoPath.isNotEmpty
                                                       ? Image.asset(logoPath, height: 16, width: 40, fit: BoxFit.contain) 
-                                                      : Icon(Icons.store, size: 16, color: Colors.grey),
+                                                      : const Icon(Icons.store, size: 16, color: Colors.grey),
                                                   
                                                   const SizedBox(width: 8),
                                                   

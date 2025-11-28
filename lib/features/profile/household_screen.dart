@@ -6,7 +6,7 @@ import 'package:flutter/services.dart'; // Panoya kopyalamak için
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'household_service.dart';
 import 'dart:convert';
-import 'premium_screen.dart'; // En üste ekleyin
+// En üste ekleyin
 
 class HouseholdScreen extends StatefulWidget {
   const HouseholdScreen({super.key});

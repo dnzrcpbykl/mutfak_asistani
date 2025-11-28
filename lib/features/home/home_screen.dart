@@ -238,7 +238,11 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 if (item.pieceCount > 0) {
                   double singlePackageSize = item.quantity / item.pieceCount;
                   if ((val - singlePackageSize).abs() < 0.1) {
-                     if (isIncrement) newPieceCount++; else newPieceCount--;
+                     if (isIncrement) {
+                       newPieceCount++;
+                     } else {
+                       newPieceCount--;
+                     }
                   }
                 }
                 if (newQuantity <= 0) {
@@ -292,7 +296,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   TextField(controller: pieceCountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Kaç Paket? (Opsiyonel)")),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    value: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
+                    initialValue: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
                     decoration: const InputDecoration(labelText: "Kategori"),
                     items: _categories.where((c) => c != "Tümü").map((String category) {
                       return DropdownMenuItem(value: category, child: Text(category));

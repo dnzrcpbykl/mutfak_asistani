@@ -196,7 +196,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     try {
       final result = await InternetAddress.lookup('google.com');
       if (result.isEmpty || result[0].rawAddress.isEmpty) {
-        throw SocketException("İnternet yok");
+        throw const SocketException("İnternet yok");
       }
     } on SocketException catch (_) {
       if (!mounted) return;
