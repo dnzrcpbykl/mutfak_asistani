@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
+import 'dart:ui'; // EKLENDİ: Blur efekti için gerekli
 
 // Modeller
 import '../../core/models/recipe.dart';
@@ -14,12 +15,13 @@ import '../market/market_service.dart';
 import '../shopping_list/shopping_service.dart';
 import 'recipe_service.dart';
 import 'recipe_importer_service.dart';
-import '../../core/utils/ad_service.dart'; // EKLENDİ
-import '../profile/profile_service.dart'; // EKLENDİ
+import '../../core/utils/ad_service.dart'; 
+import '../profile/profile_service.dart'; 
 
 // Provider
 import 'recipe_provider.dart';
-
+import '../profile/premium_screen.dart'; // EKLENDİ: Kilitli alana basınca yönlendirmek için
+import '../../core/utils/pdf_export_service.dart';
 // Ekranlar
 import 'cooking_mode_screen.dart';
 import '../../core/widgets/recipe_loading_skeleton.dart';
@@ -37,14 +39,24 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
   final MarketService _marketService = MarketService();
   final ShoppingService _shoppingService = ShoppingService();
   final RecipeImporterService _importer = RecipeImporterService();
-  final AdService _adService = AdService(); // EKLENDİ
-  final ProfileService _profileService = ProfileService(); // EKLENDİ
-  final TextEditingController _customPromptController = TextEditingController(); // EKLENDİ
+  final AdService _adService = AdService(); 
+  final ProfileService _profileService = ProfileService(); 
+  final TextEditingController _customPromptController = TextEditingController(); 
+  final PdfExportService _pdfService = PdfExportService(); // EKLENDİ
+
+  // EKLENDİ: Kullanıcının premium durumu bu değişkende tutulacak
+  bool _isUserPremium = false;
 
   @override
   void initState() {
     super.initState();
-    _adService.loadRewardedAd(); // Reklamı hazırla
+    _adService.loadRewardedAd(); 
+    
+    // EKLENDİ: Premium durumunu kontrol et
+    _profileService.checkUsageRights().then((val) {
+       if(mounted) setState(() => _isUserPremium = val['isPremium']);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
     });
@@ -52,39 +64,33 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
   // --- İŞLEMİ BAŞLATAN MERKEZ ---
   void _processRequest(String? presetPrompt, {String? customText}) async {
-    // Sayacı artır (Eğer Premium değilse)
     await _profileService.incrementUsage();
-    
-    // AI Fonksiyonunu çağır
     _startAiGeneration(presetPrompt ?? "Fark etmez", customInstruction: customText);
   }
 
-  // --- YENİLENEN DİYALOG: PREMIUM & REKLAM KONTROLÜ ---
+  // --- PREMİUM & REKLAM KONTROLÜ ---
   void _showPreferenceDialog() async {
-    // 1. Önce kullanıcının durumunu kontrol et
     final status = await _profileService.checkUsageRights();
     final bool isPremium = status['isPremium'];
     final bool needsAd = status['needsAd'];
-    final bool canGenerate = status['canGenerate']; // Şu an kullanılmıyor ama ileride gerekebilir
 
     if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Klavye açılınca yukarı kaysın diye
+      isScrollControlled: true, 
       backgroundColor: Theme.of(context).cardTheme.color,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom, // Klavye payı
+            bottom: MediaQuery.of(context).viewInsets.bottom, 
             left: 20, right: 20, top: 20
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // BAŞLIK (Premium Rozetiyle)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -97,7 +103,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               ),
               const SizedBox(height: 10),
               
-              // AÇIKLAMA METNİ
               if (!isPremium && needsAd)
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -107,7 +112,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
               const SizedBox(height: 15),
 
-              // --- PREMIUM ÖZEL ALAN (Serbest Metin) ---
               if (isPremium) ...[
                 const Text("Sana Özel İstek:", style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 5),
@@ -125,7 +129,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                 const SizedBox(height: 10),
               ],
 
-              // HAZIR BUTONLAR
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -139,7 +142,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                 ],
               ),
               
-              // EĞER PREMIUM İSE GÖNDER BUTONU (Textfield için)
               if (isPremium)
                 Padding(
                   padding: const EdgeInsets.only(top: 15),
@@ -166,25 +168,19 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
 
-  // Chip butonunun iç mantığı
   Widget _buildPreferenceChip(String label, String promptValue, bool isPremium, bool needsAd) {
     return ActionChip(
       label: Text(label),
       onPressed: () {
         Navigator.pop(context);
-        
         if (isPremium) {
-          // Premium ise direkt yap
           _processRequest(promptValue);
         } else {
-          // Premium değilse kontrol et
           if (needsAd) {
-            // Reklam izlet, biterse işlemi yap
             _adService.showRewardedAd(
               onRewardEarned: () => _processRequest(promptValue)
             );
           } else {
-            // Hakkı var, direkt yap
             _processRequest(promptValue);
           }
         }
@@ -192,7 +188,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
 
-  // --- AI SÜRECİNİ BAŞLATAN FONKSİYON (GÜNCELLENDİ: HANE DESTEĞİ VE CUSTOM PROMPT) ---
+  // --- AI SÜRECİ ---
   Future<void> _startAiGeneration(String userPreference, {String? customInstruction}) async {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -208,7 +204,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
       return; 
     }
     
-    // --- DÜZELTME: ARTIK HANE KİLERİNİ OKUYORUZ ---
     final pantryRef = await _pantryService.getPantryCollection();
     final pantrySnapshot = await pantryRef.get();
     
@@ -245,14 +240,11 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
 
     try {
-      // 1. AI Tarif Üretsin (Tercihle Birlikte)
-      // PARAMETRE EKLENDİ: customInstruction
       await _importer.generateRecipesFromPantry(myIngredients, userPreference: userPreference, customInstruction: customInstruction);
       
       if (!mounted) return;
-      Navigator.pop(context); // Yükleniyor'u kapat
+      Navigator.pop(context); 
 
-      // 2. Listeyi yenile
       Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
 
@@ -263,7 +255,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     }
   }
 
-  // ... (Geri kalan tüm yardımcı fonksiyonlar, temizleme, UI build vb. aynen kalıyor) ...
   String _cleanIngredientForShopping(String rawName) {
     String cleaned = rawName.replaceAll(RegExp(r'\s*\(.*?\)'), '');
     if (cleaned.contains(',')) {
@@ -410,7 +401,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         ],
       ),
       
-      // --- BUTON İŞLEVİ DEĞİŞTİRİLDİ ---
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
@@ -542,14 +532,31 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           ),
         ),
         title: Text(recipe.name, style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
-        trailing: IconButton(
-          icon: Icon(Icons.favorite_border, color: colorScheme.secondary),
-          onPressed: () async {
-            await _recipeService.saveRecipeToFavorites(recipe);
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tarif favorilere kaydedildi ❤️")));
-          },
-        ),
+        trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+          children: [
+            // PAYLAŞ BUTONU (PREMIUM)
+            IconButton(
+              icon: const Icon(Icons.share, color: Colors.blueGrey),
+              onPressed: () async {
+                if (!_isUserPremium) {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PremiumScreen()));
+                } else {
+                  await _pdfService.shareRecipe(recipe);
+                }
+              },
+            ),
+            // FAVORİ BUTONU (MEVCUT)
+            IconButton(
+              icon: Icon(Icons.favorite_border, color: colorScheme.secondary),
+              onPressed: () async {
+                await _recipeService.saveRecipeToFavorites(recipe);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tarif favorilere kaydedildi ❤️")));
+              },
+            ),
+          ],
+),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -581,6 +588,76 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // --- EKLENDİ: BESİN DEĞERLERİ (PREMIUM ÖZELLİK) ---
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _isUserPremium ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _isUserPremium ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Besin Değerleri (1 Porsiyon)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          if (!_isUserPremium) 
+                            const Icon(Icons.lock, size: 14, color: Colors.grey),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Eğer Premium ise Değerleri Göster, Değilse Bulanıklaştır
+                      _isUserPremium 
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildMacroItem("Kalori", recipe.calories, Colors.orange),
+                              _buildMacroItem("Protein", recipe.protein, Colors.blue),
+                              _buildMacroItem("Karb.", recipe.carbs, Colors.brown),
+                              _buildMacroItem("Yağ", recipe.fat, Colors.red),
+                            ],
+                          )
+                        : GestureDetector(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PremiumScreen())),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Bulanık İçerik
+                                ImageFiltered(
+                                  imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                    children: [
+                                      _buildMacroItem("Kalori", "450 kcal", Colors.grey),
+                                      _buildMacroItem("Protein", "20g", Colors.grey),
+                                      _buildMacroItem("Karb.", "45g", Colors.grey),
+                                    ],
+                                  ),
+                                ),
+                                // Kilit Yazısı
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    "Premium'a Özel",
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+                // -------------------------------------------------------
+
                 if (subTips.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -747,6 +824,16 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
           Text(label, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7), fontSize: 12)),
         ],
       ),
+    );
+  }
+  
+  // EKLENDİ: Besin Değeri Kartı İçin Yardımcı Widget
+  Widget _buildMacroItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
     );
   }
 }

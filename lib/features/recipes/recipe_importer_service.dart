@@ -31,7 +31,6 @@ class RecipeImporterService {
   }
 
   // 2. Kilerdeki Malzemelere Göre Tarif Üret
-  // GÜNCELLEME: 'customInstruction' parametresi eklendi.
   Future<void> generateRecipesFromPantry(List<String> myIngredients, {String userPreference = "Fark etmez, genel öneriler ver.", String? customInstruction}) async {
     // Önce temizlik
     await _clearOldRecipes();
@@ -43,12 +42,10 @@ class RecipeImporterService {
 
     String ingredientsText = myIngredients.join(", ");
     
-    // --- GÜNCELLENEN MANTIK BAŞLANGIÇ ---
-    // Eğer özel bir talimat (customInstruction) geldiyse onu kullan, yoksa buton seçimini (userPreference) kullan.
+    // Kullanıcı isteği
     String finalUserRequest = (customInstruction != null && customInstruction.trim().isNotEmpty) 
         ? "KULLANICININ ÖZEL VE KESİN İSTEĞİ: $customInstruction"
         : "Kullanıcı Tercihi: $userPreference";
-    // ------------------------------------
 
     debugPrint("🤖 Şef düşünüyor... Eldekiler: $ingredientsText | İstek: $finalUserRequest");
 
@@ -58,10 +55,9 @@ class RecipeImporterService {
 
     final headers = {'Content-Type': 'application/json'};
 
-    // --- SENİN ORİJİNAL PROMPT YAPIN (KORUNDU) ---
-    // Sadece dinamik istek kısmı ($finalUserRequest) araya yerleştirildi.
+    // --- GÜNCELLENEN PROMPT: BESİN DEĞERLERİ EKLENDİ ---
     final prompt = '''
-      Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin.
+      Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin ve aynı zamanda diyetisyensin.
       Elimdeki malzemeler: [$ingredientsText]
       
       **KULLANICI TERCİHİ (ÇOK ÖNEMLİ):** $finalUserRequest.
@@ -71,10 +67,10 @@ class RecipeImporterService {
       Bu malzemelerin çoğunluğunu (ve gerekirse her evde bulunan su, tuz, karabiber, sıvı yağ, salça gibi temel malzemeleri de ekleyerek) kullanarak yapılabilecek en iyi 5 tarifi oluştur.
       
       ÇOK ÖNEMLİ KURALLAR (BUNLARA KESİN UY):
-      1. **NET MİKTARLAR:** Malzeme listesinde ASLA belirsiz ifade kullanma. "Yumurta" YAZMA, "2 adet Yumurta" YAZ. "Un" YAZMA, "1 su bardağı Un" YAZ. Miktarı olmayan malzeme kabul edilmez.
-      2. **NET SÜRELER:** Yapılış adımlarında "pişirin" veya "haşlayın" deyip geçme. "Kısık ateşte 15 dakika pişirin", "200 derece fırında 25 dakika bekletin" gibi net SÜRE ve ISI bilgisi ver.
-      3. **MARKA YOK:** Marka adı kullanma (Örn: "Pakmaya" değil "Maya" yaz).
-      4. **KATEGORİLER:** Çorba, Ana Yemek, Ara Sıcak veya Tatlı olarak belirt.
+      1. **NET MİKTARLAR:** Malzeme listesinde ASLA belirsiz ifade kullanma. "Yumurta" YAZMA, "2 adet Yumurta" YAZ. "Un" YAZMA, "1 su bardağı Un" YAZ.
+      2. **NET SÜRELER:** Yapılış adımlarında "pişirin" deyip geçme. "Kısık ateşte 15 dakika pişirin" gibi net süre ver.
+      3. **MARKA YOK:** Marka adı kullanma.
+      4. **BESİN DEĞERLERİ (ZORUNLU):** Her bir tarif için 1 porsiyonluk tahmini Kalori (kcal), Protein (g), Karbonhidrat (g) ve Yağ (g) değerlerini hesapla ve JSON'a ekle.
       
       İSTENEN JSON FORMATI (Sadece bu JSON'u döndür, yorum yapma):
       [
@@ -83,14 +79,16 @@ class RecipeImporterService {
           "description": "Yemeğin kısa, iştah açıcı tanımı",
           "ingredients": [
             "2 adet Yumurta", 
-            "1 su bardağı Süt", 
-            "500 gr Kıyma", 
-            "1 çay kaşığı Tuz"
+            "1 su bardağı Süt"
           ], 
-          "instructions": "1. Kıymayı tavaya alın ve suyunu çekene kadar (yaklaşık 10 dk) kavurun.\\n2. Soğanları ekleyip pembeleşinceye kadar 5 dakika daha kavurun.\\n3. ...",
+          "instructions": "1. Kıymayı tavaya alın... ",
           "prepTime": 30,
           "difficulty": "Orta", 
-          "category": "Ana Yemek"
+          "category": "Ana Yemek",
+          "calories": "450 kcal",
+          "protein": "25g",
+          "carbs": "10g",
+          "fat": "15g"
         }
       ]
     ''';
@@ -104,7 +102,26 @@ class RecipeImporterService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['candidates'] == null || (data['candidates'] as List).isEmpty) return;
+        // 1. Google API bir hata mesajı döndü mü?
+        if (data['error'] != null) {
+          debugPrint("❌ API Hatası: ${data['error']['message']}");
+          throw Exception(data['error']['message']);
+        }
+
+        // 2. Aday listesi (candidates) boş mu veya null mı?
+        if (data['candidates'] == null || (data['candidates'] as List).isEmpty) {
+          debugPrint("⚠️ AI cevap üretemedi (Güvenlik filtresi veya boş cevap).");
+          // Burada kullanıcıya "Tekrar dene" diyebilmek için hata fırlatabiliriz
+          // veya sessizce çıkabiliriz.
+          return; 
+        }
+
+        // 3. İçerik (content) var mı?
+        var candidate = data['candidates'][0];
+        if (candidate['content'] == null || candidate['content']['parts'] == null) {
+           debugPrint("⚠️ Cevap formatı bozuk.");
+           return;
+        }
         
         String content = data['candidates'][0]['content']['parts'][0]['text'];
         
@@ -130,11 +147,17 @@ class RecipeImporterService {
               'prepTime': item['prepTime'],
               'difficulty': item['difficulty'],
               'category': item['category'],
+              // --- YENİ EKLENEN VERİLER ---
+              'calories': item['calories'] ?? 'Belirsiz',
+              'protein': item['protein'] ?? '-',
+              'carbs': item['carbs'] ?? '-',
+              'fat': item['fat'] ?? '-',
+              // ----------------------------
               'createdAt': FieldValue.serverTimestamp(),
             });
           }
           await batch.commit(); 
-          debugPrint("✅ Şef ${recipesJson.length} adet DETAYLI tarif önerdi!");
+          debugPrint("✅ Şef ${recipesJson.length} adet BESİN DEĞERLİ tarif önerdi!");
         }
       } else {
         throw Exception("API Hatası: ${response.statusCode}");

@@ -6,6 +6,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/empty_state_widget.dart';
 import '../market/market_service.dart'; 
 import '../../core/utils/market_utils.dart'; // MarketUtils Eklendi
+import '../../core/utils/pdf_export_service.dart';
+import '../profile/profile_service.dart';
+import '../profile/premium_screen.dart';
 
 class ShoppingListView extends StatefulWidget {
   const ShoppingListView({super.key});
@@ -17,6 +20,8 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
   final ShoppingService _service = ShoppingService();
   final MarketService _marketService = MarketService(); 
   final TextEditingController _controller = TextEditingController();
+  final PdfExportService _pdfService = PdfExportService(); // EKLENDİ
+final ProfileService _profileService = ProfileService(); // EKLENDİ
 
   @override
   bool get wantKeepAlive => true;
@@ -39,6 +44,24 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
       );
     }
   }
+
+  void _shareList(List<ShoppingItem> items) async {
+  if (items.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Liste boş, paylaşılacak bir şey yok.")));
+    return;
+  }
+
+  // Premium Kontrolü
+  final status = await _profileService.checkUsageRights();
+  if (!status['isPremium']) {
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const PremiumScreen()));
+    return;
+  }
+
+  // PDF Oluştur ve Paylaş
+  await _pdfService.shareShoppingList(items);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +96,12 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                         "${items.length} Ürün",
                         style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.bold),
                       ),
+
+                      IconButton(
+                    icon: const Icon(Icons.share, color: Colors.blue),
+                    tooltip: "PDF Olarak Paylaş (Premium)",
+                    onPressed: () => _shareList(items),
+                        ),
                       TextButton.icon(
                         onPressed: hasCompletedItems 
                             ? () async {

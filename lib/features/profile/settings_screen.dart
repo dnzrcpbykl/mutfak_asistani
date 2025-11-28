@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mutfak_asistani/features/auth/login_screen.dart';
 import 'package:mutfak_asistani/features/profile/profile_service.dart';
+import '../profile/subscription_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -99,6 +100,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // --- ABONELİK YÖNETİMİ (YENİ) ---
+          ListTile(
+            leading: const Icon(Icons.card_membership, color: Colors.amber),
+            title: const Text("Abonelik ve Paketim"),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SubscriptionSettingsScreen())),
+          ),
+          const Divider(),
           const ListTile(
             leading: Icon(Icons.notifications_outlined),
             title: Text("Bildirim Ayarları"),
