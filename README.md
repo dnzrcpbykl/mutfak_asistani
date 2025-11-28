@@ -4,7 +4,7 @@
 Buzdolabındaki malzemeleri söyle ya da market fişini okut, gerisini bize bırak. Akıllı tarif önerileri, fiyat karşılaştırması, alışveriş listesi ve aileyle paylaşım — hepsi tek uygulamada.
 
 <a href="https://github.com/dnzrcpbykl/mutfak_asistani">
-  <img src="assets/splash.png" width="100%" alt="Mutfak Asistanı Splash" />
+  <img src="assets/icon.png" width="100%" alt="Mutfak Asistanı Logo" />
 </a>
 
 ## Özellikler
