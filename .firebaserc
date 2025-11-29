@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "mutfak-asistani-42a27"
-  }
+    "default": "mutfak-asistani-42a27",
+    "y": "mutfak-asistani-42a27"
+  },
+  "targets": {},
+  "etags": {}
 }

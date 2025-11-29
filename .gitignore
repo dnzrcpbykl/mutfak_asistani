@@ -18,9 +18,7 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code (istersen yorumu kaldır)
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -33,13 +31,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
-# Symbolication related
+# Symbolication & Obfuscation
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android Studio artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
@@ -53,8 +49,38 @@ ios/Runner/GoogleService-Info.plist
 macos/Runner/GoogleService-Info.plist
 lib/firebase_options.dart 
 
-# Editör dosyaları (Opsiyonel ama iyidir)
-.vscode/
+# === SENİN İÇİN ÖZEL OLARAK EKLEDİKLERİM ===
+/functions/
+/functions/**
+serviceAccount.json
+firebase-service-account.json
+*.json.key
+*.json.keys
+*.service-account.json
+*.json
+market_*.json
+all_products_*.json
+data_*.json
+.firebase/
+.firebaserc
+firebase.json
+firebase-debug.log
+upload_initial.js
+test_upload.js
+debug_*.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.log
+*.tmp
+*.temp*/
 
-# Gizli kodlar
+# Editör dosyaları
+.vscode/
 lib/secrets.dart

@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Tarih formatı için
 import 'package:mutfak_asistani/features/home/home_screen.dart';
 import 'package:mutfak_asistani/features/profile/statistics_screen.dart';
-import 'package:provider/provider.dart'; // RecipeProvider erişimi için
-import '../../core/theme/app_theme.dart';
+// RecipeProvider erişimi için
 import '../pantry/pantry_service.dart';
 import '../../core/models/pantry_item.dart';
 import 'weather_service.dart';
-import 'main_layout.dart'; // Sayfa geçişleri için (Tab değişimi)
+// Sayfa geçişleri için (Tab değişimi)
 import '../pantry/add_pantry_item_screen.dart';
 
 class DashboardScreen extends StatefulWidget {

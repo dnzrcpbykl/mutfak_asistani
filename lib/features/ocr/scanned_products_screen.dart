@@ -23,13 +23,18 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   late String _marketName;
   late List<bool> _selectedItems;
   late List<DateTime> _expirationDates;
+  late DateTime _receiptDate; // EKLENDİ: Fiş Tarihi
 
   @override
   void initState() {
     super.initState();
-    
     List<dynamic> rawItems = widget.scannedData['items'] ?? [];
     _marketName = widget.scannedData['market_name'] ?? 'Bilinmiyor';
+    
+    // EKLENDİ: OCR sonucundan tarihi çek, yoksa şu anı al
+    String dateStr = widget.scannedData['date'] ?? DateTime.now().toIso8601String();
+    // tryParse hata verirse (null dönerse) bugünü kullan
+    _receiptDate = DateTime.tryParse(dateStr) ?? DateTime.now();
 
     // Artık karmaşık parse işlemlerine gerek yok, AI temiz veri veriyor.
     // Sadece aynı ürünleri (İsimleri aynı olanları) birleştiriyoruz.
@@ -45,7 +50,6 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   // --- BASİT BİRLEŞTİRME (AI GÜVENİLİR OLDUĞU İÇİN) ---
   List<Map<String, dynamic>> _mergeItemsSimple(List<dynamic> rawList) {
     List<Map<String, dynamic>> mergedList = [];
-    
     for (var item in rawList) {
       String name = (item['product_name'] ?? '').trim();
       String brand = (item['brand'] ?? '').trim();
@@ -76,7 +80,8 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
         newItem['product_name'] = name;
         newItem['amount'] = amount;
         newItem['unit'] = unit;
-        newItem['pieceCount'] = 1; // Paket mantığı artık AI tarafından "1" olarak geliyor (Boyut isme yazıldı)
+        newItem['pieceCount'] = 1; 
+        // Paket mantığı artık AI tarafından "1" olarak geliyor (Boyut isme yazıldı)
         mergedList.add(newItem);
       }
     }
@@ -92,13 +97,13 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
   Future<void> _saveSelectedToPantry() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    
+
     showDialog(
       context: context, 
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator())
     );
-    
+
     final pantrySnapshot = await _pantryService.pantryRef.get();
     final existingPantryItems = pantrySnapshot.docs;
 
@@ -146,7 +151,8 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
         }
 
         if (price > 0) {
-          await _marketService.addPriceInfo(ingredientName, _marketName, price);
+          // GÜNCELLEME BURADA: Fiş tarihini (_receiptDate) de gönderiyoruz
+          await _marketService.addPriceInfo(ingredientName, _marketName, price, _receiptDate);
         }
         count++;
       }
@@ -227,6 +233,14 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                       ),
                     ),
                   ],
+                ),
+                // EKLENDİ: Fiş Tarihini Kullanıcıya Göster (Opsiyonel ama şık durur)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0, left: 34),
+                  child: Text(
+                    "Fiş Tarihi: ${DateFormat('dd.MM.yyyy').format(_receiptDate)}",
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.6)),
+                  ),
                 ),
               ],
             ),

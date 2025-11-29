@@ -1,181 +1,193 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const logger = require("firebase-functions/logger");
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+admin.initializeApp();
 
-// GÜVENLİK AYARLARI (Senin orijinal kodundaki ayarlar - Hepsine izin ver)
-const safetySettings = [
-  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+const BASE_URL = "https://api.marketfiyati.org.tr/api/v2/searchByCategories";
+
+// En gerçekçi header'lar (Chrome 131, 2025)
+const HEADERS = {
+  'accept': 'application/json, text/plain, */*',
+  'accept-language': 'tr-TR,tr;q=0.9,en;q=0.8',
+  'content-type': 'application/json',
+  'origin': 'https://marketfiyati.org.tr',
+  'referer': 'https://marketfiyati.org.tr/',
+  'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'sec-fetch-dest': 'empty',
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-site': 'same-site',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'x-requested-with': 'XMLHttpRequest'
+};
+
+const CATEGORIES = [
+  "Meyve ve Sebze",
+  "Et, Tavuk ve Balık",
+  "Süt Ürünleri ve Kahvaltılık",
+  "Temel Gıda",
+  "İçecek",
+  "Atıştırmalık ve Tatlı",
+  "Temizlik ve Kişisel Bakım Ürünleri"
 ];
 
-// --- 1. FİŞ TARAMA FONKSİYONU ---
-exports.analyzeReceipt = onCall({ secrets: ["GEMINI_API_KEY"], timeoutSeconds: 60 }, async (request) => {
-  const base64Image = request.data.image;
-  
-  if (!base64Image) {
-    throw new HttpsError('invalid-argument', 'Resim verisi gönderilmedi.');
-  }
+exports.weeklyMarketPriceUpdate = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "2GB" })
+  .pubsub.schedule("0 6 * * 3")
+  .timeZone("Europe/Istanbul")
+  .onRun(async (context) => {
+    console.log("HIZLI TÜRKİYE FİYAT GÜNCELLEME BAŞLADI:", new Date());
 
-  try {
-    // Modeli güvenlik ayarlarıyla birlikte başlatıyoruz
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      safetySettings: safetySettings 
-    });
+    const allProducts = new Map();
+    const now = admin.firestore.FieldValue.serverTimestamp();
 
-    const prompt = `
-      Bu market fişini analiz et ve aşağıdaki katı kurallara göre JSON formatında döndür.
-      GÖREV 1: MARKET TESPİTİ
-      "BIM", "A101", "SOK", "MIGROS", "CARREFOURSA" veya "DIGER".
-      GÖREV 2: SADECE GIDA ÜRÜNLERİNİ AYIKLA
-      Listeye SADECE insanın yiyip içebileceği GIDA ürünlerini al.
-      ❌ Temizlik, Kişisel Bakım, Kağıt Ürünleri, Mutfak Gereçleri, Hayvan Mamaları, Poşet, İndirim, KDV satırlarını KESİNLİKLE GÖRMEZDEN GEL.
-      GÖREV 3: MİKTAR VE BİRİM ANALİZİ (EN ÖNEMLİ KISIM)
-      Fişte yazan miktarları ve birimleri şu mantıkla dönüştür:
-      
-      A) ÇOKLU PAKETLERİ AÇ (Multipacks):
-         - Fişte "4x1L Süt" veya "6x200ml Meyve Suyu" yazıyorsa:
-           -> amount: 4 (veya 6), unit: "adet".
-           -> product_name: "Süt (1L)" veya "Meyve Suyu (200ml)".
-           (Yani paketi patlat, içindeki adet sayısını 'amount' olarak ver.)
+    // PARALEL ÇALIŞTIR: 3 kategori aynı anda!
+    const chunkSize = 3;
+    for (let i = 0; i < CATEGORIES.length; i += chunkSize) {
+      const chunk = CATEGORIES.slice(i, i + chunkSize);
 
-      B) BOYUTU MİKTAR SANMA (Size Confusion):
-         - Fişte "PİRİNÇ 2.5KG" veya "GAZOZ 2.5L" yazıyorsa, buradaki 2.5 ürünün boyutudur, adedi DEĞİLDİR.
-           -> amount: 1 (Eğer başında '2 AD' yazmıyorsa 1 kabul et).
-           -> unit: "adet".
-           -> product_name: "Pirinç (2.5kg)" veya "Gazoz (2.5L)".
-      
-      C) ADETLİ ÜRÜNLER:
-         - Fişte "2 AD X 15.00" şeklinde satır varsa 'amount' 2 olmalıdır.
-      GÖREV 4: KATEGORİLENDİRME
-      1. "Et & Tavuk & Balık": (Kıyma, Tavuk, Balık, Sucuk, Sosis vb.)
-      2. "Süt & Kahvaltılık": (Süt, Peynir, Yoğurt, Yumurta, Tereyağı, Zeytin vb.)
-      3. "Meyve & Sebze": (Domates, Biber, Soğan, Meyveler vb.)
-      4. "Temel Gıda & Bakliyat": (Un, Şeker, Tuz, Yağ, Pirinç, Makarna, Salça vb.)
-      5. "Atıştırmalık": (Çikolata, Cips, Bisküvi, Kuruyemiş, Dondurma vb.)
-      6. "İçecekler": (Su, Kola, Gazoz, Çay, Kahve vb.)
-      7. "Diğer": (Diğer yenebilir gıdalar)
+      await Promise.all(chunk.map(async (category) => {
+        console.log(`Kategori başladı: ${category}`);
+        let page = 0;
 
-      VERİ FORMATI (JSON):
-      - "product_name": Ürünün adı (Boyut bilgisi parantez içinde olsun. Örn: "Tavuk Baget (1kg)").
-      Markayı isme dahil etme, 'brand' alanına yaz.
-      - "brand": Marka (Örn: "Torku", "Pınar"). Yoksa null.
-      - "price": Son fiyat (Sayı).
-      - "amount": Toplam adet (Sayı).
-      - "unit": Sadece "adet" kullan.
-      (Litre veya Kg olsa bile 'adet' yaz, boyutu isme parantez içine ekle).
-      - "days_to_expire": Tahmini raf ömrü (gün).
-      CEVAP ÖRNEĞİ:
-      {
-        "market_name": "MIGROS",
-        "items": [
-          {"product_name": "Yağlı Süt (1L)", "brand": "Torku", "category": "Süt & Kahvaltılık", "price": 100.00, "days_to_expire": 7, "amount": 4, "unit": "adet"},
-          {"product_name": "Baldo Pirinç (2.5kg)", "brand": "Efsane", "category": "Temel Gıda & Bakliyat", "price": 135.00, "days_to_expire": 365, "amount": 1, "unit": "adet"}
-        ]
-      }
-    `;
+        while (true) {
+          const payload = {
+            menuCategory: true,
+            keywords: category,
+            pages: page,
+            size: 100,              // 100 istiyoruz (bazen 50, bazen 100 veriyor)
+            latitude: 39.9208,
+            longitude: 32.8541,
+            distance: 2000,
+            depots: []
+          };
 
-    const imagePart = {
-      inlineData: {
-        data: base64Image,
-        mimeType: "image/jpeg",
-      },
-    };
+          let data;
+          let success = false;
 
-    const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const text = response.text();
+          // 4 kez dene
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              const res = await fetch(BASE_URL, {
+                method: "POST",
+                headers: HEADERS,
+                body: JSON.stringify(payload),
+                timeout: 25000
+              });
 
-    let cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const startIndex = cleanJson.indexOf('{');
-    const endIndex = cleanJson.lastIndexOf('}');
-    
-    if (startIndex !== -1 && endIndex !== -1) {
-      cleanJson = cleanJson.substring(startIndex, endIndex + 1);
-    }
+              if (res.ok) {
+                data = await res.json();
+                success = true;
+                break;
+              }
+            } catch (e) {
+              console.warn(`${category} sayfa ${page} deneme ${attempt + 1} başarısız`);
+            }
+            await new Promise(r => setTimeout(r, 5000 + attempt * 4000));
+          }
 
-    return JSON.parse(cleanJson);
+          if (!success) {
+            console.error(`${category} kategorisi tamamen alınamadı.`);
+            break;
+          }
 
-  } catch (error) {
-    logger.error("Gemini Hatası:", error);
-    // Hata detayını istemciye dönelim ki sorunu görebilelim
-    throw new HttpsError('internal', `Fiş analiz hatası: ${error.message}`);
-  }
-});
+          const items = data.content || [];
+          if (items.length === 0) break;
 
-// --- 2. TARİF ÜRETME FONKSİYONU ---
-exports.generateRecipes = onCall({ secrets: ["GEMINI_API_KEY"], timeoutSeconds: 60 }, async (request) => {
-  const ingredients = request.data.ingredients;
-  const userPreference = request.data.preference || "Fark etmez, genel öneriler ver.";
+          console.log(`${category} - Sayfa ${page} → ${items.length} ürün`);
 
-  if (!ingredients || ingredients.length === 0) {
-    throw new HttpsError('invalid-argument', 'Malzeme listesi boş.');
-  }
+          for (const item of items) {
+            const markets = (item.productDepotInfoList || [])
+              .map(m => ({
+                marketName: normalizeMarket(m.marketAdi || ""),
+                branchName: m.depotName || "",
+                price: parseFloat(m.price) || 0,
+                unitPriceText: m.unitPrice || ""
+              }))
+              .filter(m => m.price > 0);
 
-  try {
-    // Modeli güvenlik ayarlarıyla birlikte başlatıyoruz
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      safetySettings: safetySettings 
-    });
-    
-    const ingredientsText = ingredients.join(", ");
+            if (markets.length > 0) {
+              const key = item.id;
+              if (!allProducts.has(key)) {
+                allProducts.set(key, {
+                  id: item.id,
+                  title: item.title?.trim() || "İsimsiz",
+                  brand: item.brand || "Markasız",
+                  imageUrl: item.imageUrl || "",
+                  category: category,
+                  normalizedTitle: normalizeTitle(item.title || ""),
+                  markets: []
+                });
+              }
+              allProducts.get(key).markets.push(...markets);
+            }
+          }
 
-    const prompt = `
-      Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin.
-      Elimdeki malzemeler: [${ingredientsText}]
-      
-      **KULLANICI TERCİHİ (ÇOK ÖNEMLİ):** Kullanıcı şu tarz yemekler istiyor: "${userPreference}".
-      Lütfen tarifleri seçerken BU TERCİHE ÖNCELİK VER.
-      
-      GÖREVİN:
-      Bu malzemelerin çoğunluğunu (ve gerekirse her evde bulunan su, tuz, karabiber, sıvı yağ, salça gibi temel malzemeleri de ekleyerek) kullanarak yapılabilecek en iyi 5 tarifi oluştur.
-      ÇOK ÖNEMLİ KURALLAR (BUNLARA KESİN UY):
-      1. **NET MİKTARLAR:** Malzeme listesinde ASLA belirsiz ifade kullanma.
-      "Yumurta" YAZMA, "2 adet Yumurta" YAZ. "Un" YAZMA, "1 su bardağı Un" YAZ. Miktarı olmayan malzeme kabul edilmez.
-      2. **NET SÜRELER:** Yapılış adımlarında "pişirin" veya "haşlayın" deyip geçme.
-      "Kısık ateşte 15 dakika pişirin", "200 derece fırında 25 dakika bekletin" gibi net SÜRE ve ISI bilgisi ver.
-      3. **MARKA YOK:** Marka adı kullanma (Örn: "Pakmaya" değil "Maya" yaz).
-      4. **KATEGORİLER:** Çorba, Ana Yemek, Ara Sıcak veya Tatlı olarak belirt.
-      İSTENEN JSON FORMATI (Sadece bu JSON'u döndür, yorum yapma):
-      [
-        {
-          "name": "Yemek Adı",
-          "description": "Yemeğin kısa, iştah açıcı tanımı",
-          "ingredients": [
-            "2 adet Yumurta", 
-            "1 su bardağı Süt", 
-            "500 gr Kıyma", 
-            "1 çay kaşığı Tuz"
-          ], 
-          "instructions": "1. Kıymayı tavaya alın ve suyunu çekene kadar (yaklaşık 10 dk) kavurun.\\n2. Soğanları ekleyip pembeleşinceye kadar 5 dakika daha kavurun.\\n3. ...",
-          "prepTime": 30,
-          "difficulty": "Orta", 
-          "category": "Ana Yemek"
+          page++;
+
+          // HIZLI AMA GÜVENLİ: 4.5 - 7 saniye rastgele bekle
+          await new Promise(r => setTimeout(r, 4500 + Math.random() * 2500));
         }
-      ]
-    `;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
-
-    let cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const startIndex = cleanJson.indexOf('[');
-    const endIndex = cleanJson.lastIndexOf(']');
-    
-    if (startIndex !== -1 && endIndex !== -1) {
-      cleanJson = cleanJson.substring(startIndex, endIndex + 1);
+      }));
     }
 
-    return JSON.parse(cleanJson);
+    // Firestore'a yaz
+    const collectionRef = admin.firestore().collection("market_prices");
+    let batch = admin.firestore().batch();
+    let count = 0;
 
-  } catch (error) {
-    logger.error("Tarif Üretme Hatası:", error);
-    throw new HttpsError('internal', `Tarif üretilemedi: ${error.message}`);
-  }
-});
+    for (const product of allProducts.values()) {
+      const seen = new Set();
+      const unique = product.markets.filter(m => {
+        const k = `${m.marketName}-${m.branchName}-${m.price}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
+      batch.set(collectionRef.doc(product.id), {
+        title: product.title,
+        brand: product.brand,
+        imageUrl: product.imageUrl,
+        category: product.category,
+        normalizedTitle: product.normalizedTitle,
+        markets: unique,
+        updatedAt: now,
+        source: 'system_auto',   // BU ÇOK ÖNEMLİ! Bu verinin robottan geldiğini kanıtlar.
+        lastPriceCheck: admin.firestore.Timestamp.now() // Ekstra kontrol alanı
+      }, { merge: true });
+
+      count++;
+      if (count % 500 === 0) {
+        await batch.commit();
+        batch = admin.firestore().batch();
+      }
+    }
+    if (count % 500 !== 0) await batch.commit();
+
+    console.log(`BİTTİ! ${allProducts.size} ürün kaydedildi. Süre: ~45-55 dakika`);
+    return null;
+  });
+
+// normalize fonksiyonları aynı kalıyor...
+function normalizeTitle(t) {
+  return t.toLowerCase()
+    .replace(/[ıİ]/g,'i').replace(/[ğĞ]/g,'g')
+    .replace(/[üÜ]/g,'u').replace(/[şŞ]/g,'s')
+    .replace(/[öÖ]/g,'o').replace(/[çÇ]/g,'c')
+    .replace(/[^a-z0-9]/g,'');
+}
+
+function normalizeMarket(n) {
+  const u = (n || "").toUpperCase();
+  if (u.includes("MİGROS")) return "MIGROS";
+  if (u.includes("A101")) return "A101";
+  if (u.includes("ŞOK")) return "SOK";
+  if (u.includes("BİM") || u.includes("BIM")) return "BIM";
+  if (u.includes("CARREFOUR")) return "CARREFOUR";
+  if (u.includes("TARIM KREDİ")) return "TARIM_KREDİ";
+  return u;
+}

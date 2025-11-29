@@ -31,8 +31,8 @@ dependencies:
   url_launcher: ^6.2.5
   geolocator: ^10.1.0
   cloud_functions: ^4.7.6
-  flutter_image_compress: ^2.1.0  # Bu satırı ekleyin/kontrol edin
-  path_provider: ^2.1.2
+  flutter_image_compress: ^2.3.0  # Bu satırı ekleyin/kontrol edin
+  path_provider: ^2.1.5
   google_mobile_ads: ^6.0.0
   pdf: ^3.11.3
   printing: ^5.13.1

@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_image_compress/flutter_image_compress.dart'; // EKLENDİ: Sıkıştırma paketi
-import 'package:path_provider/path_provider.dart' as path_provider; // EKLENDİ: Dosya yolu için
-import '../../secrets.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
+import '../../secrets.dart'; // Bu dosyanın olduğundan emin ol, yoksa API KEY'i direkt buraya string olarak yaz.
 
 class OCRService {
+  // API Key'i Secrets dosyasından çekiyoruz. Eğer hata verirse buraya direkt "AIza..." şeklinde yazabilirsin.
   static const String _apiKey = Secrets.geminiApiKey;
+  
   static Map<String, dynamic> lastScannedResult = {}; 
 
   Future<String?> pickImage(ImageSource source) async {
@@ -21,9 +23,10 @@ class OCRService {
     debugPrint("🚀 Cyber Chef Fişi Analiz Ediyor (Sadece Gıda & Doğru Model)...");
 
     try {
-      // --- BELLEK YÖNETİMİ BAŞLANGIÇ: RESMİ SIKIŞTIRMA ---
-      // Resmi doğrudan belleğe yüklemek yerine önce sıkıştırıyoruz.
-      File fileToUpload;
+      // --- BELLEK YÖNETİMİ & SIKIŞTIRMA ---
+      // Hata almamak için varsayılan olarak orijinal dosyayı atıyoruz.
+      File fileToUpload = File(imagePath); 
+
       try {
         final dir = await path_provider.getTemporaryDirectory();
         final targetPath = '${dir.absolute.path}/ocr_temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -31,25 +34,22 @@ class OCRService {
         final XFile? compressedFile = await FlutterImageCompress.compressAndGetFile(
           imagePath,
           targetPath,
-          minWidth: 1024, // Fiş okumak için 1024px yeterli (Gereksiz büyüklüğü engeller)
+          minWidth: 1024,
           minHeight: 1024,
-          quality: 75,    // %75 kalite hem okunabilir hem az yer kaplar
+          quality: 75,
           format: CompressFormat.jpeg,
         );
 
         if (compressedFile != null) {
           fileToUpload = File(compressedFile.path);
           debugPrint("✅ Resim sıkıştırıldı. Orijinal: ${File(imagePath).lengthSync()} byte -> Yeni: ${fileToUpload.lengthSync()} byte");
-        } else {
-          fileToUpload = File(imagePath); // Sıkıştırma başarısızsa orijinali kullan
         }
       } catch (e) {
-        debugPrint("⚠️ Sıkıştırma hatası (önemsiz, orijinal dosya kullanılacak): $e");
-        fileToUpload = File(imagePath);
+        debugPrint("⚠️ Sıkıştırma hatası (Önemsiz, orijinal dosya kullanılacak): $e");
+        // Hata durumunda fileToUpload zaten orijinal dosya olarak tanımlı.
       }
-      // --- BELLEK YÖNETİMİ BİTİŞ ---
 
-      // Artık sıkıştırılmış dosyayı okuyoruz
+      // Dosyayı Byte'a çevir
       final bytes = await fileToUpload.readAsBytes();
       final base64Image = base64Encode(bytes);
       
@@ -58,7 +58,7 @@ class OCRService {
       
       final headers = {'Content-Type': 'application/json'};
 
-      // --- KATI GIDA FİLTRESİ VE KATEGORİ PROMPT'U ---
+      // --- İSTEM (PROMPT) ---
       const prompt = '''
       Bu market fişini analiz et ve aşağıdaki katı kurallara göre JSON formatında döndür.
 
@@ -69,47 +69,31 @@ class OCRService {
       Listeye SADECE insanın yiyip içebileceği GIDA ürünlerini al.
       ❌ Temizlik, Kişisel Bakım, Kağıt Ürünleri, Mutfak Gereçleri, Hayvan Mamaları, Poşet, İndirim, KDV satırlarını KESİNLİKLE GÖRMEZDEN GEL.
 
-      GÖREV 3: MİKTAR VE BİRİM ANALİZİ (EN ÖNEMLİ KISIM)
+      GÖREV 3: MİKTAR VE BİRİM ANALİZİ
       Fişte yazan miktarları ve birimleri şu mantıkla dönüştür:
-      
-      A) ÇOKLU PAKETLERİ AÇ (Multipacks):
-         - Fişte "4x1L Süt" veya "6x200ml Meyve Suyu" yazıyorsa:
-           -> amount: 4 (veya 6), unit: "adet".
-           -> product_name: "Süt (1L)" veya "Meyve Suyu (200ml)".
-           (Yani paketi patlat, içindeki adet sayısını 'amount' olarak ver.)
+      A) ÇOKLU PAKETLERİ AÇ: "4x1L Süt" -> amount: 4, unit: "adet", product_name: "Süt (1L)".
+      B) BOYUTU MİKTAR SANMA: "PİRİNÇ 2.5KG" -> amount: 1, unit: "adet", product_name: "Pirinç (2.5kg)".
+      C) ADETLİ ÜRÜNLER: "2 AD X 15.00" -> amount: 2.
 
-      B) BOYUTU MİKTAR SANMA (Size Confusion):
-         - Fişte "PİRİNÇ 2.5KG" veya "GAZOZ 2.5L" yazıyorsa, buradaki 2.5 ürünün boyutudur, adedi DEĞİLDİR.
-           -> amount: 1 (Eğer başında '2 AD' yazmıyorsa 1 kabul et).
-           -> unit: "adet".
-           -> product_name: "Pirinç (2.5kg)" veya "Gazoz (2.5L)".
-      
-      C) ADETLİ ÜRÜNLER:
-         - Fişte "2 AD X 15.00" şeklinde satır varsa 'amount' 2 olmalıdır.
-
-      GÖREV 4: KATEGORİLENDİRME
-      1. "Et & Tavuk & Balık": (Kıyma, Tavuk, Balık, Sucuk, Sosis vb.)
-      2. "Süt & Kahvaltılık": (Süt, Peynir, Yoğurt, Yumurta, Tereyağı, Zeytin vb.)
-      3. "Meyve & Sebze": (Domates, Biber, Soğan, Meyveler vb.)
-      4. "Temel Gıda & Bakliyat": (Un, Şeker, Tuz, Yağ, Pirinç, Makarna, Salça vb.)
-      5. "Atıştırmalık": (Çikolata, Cips, Bisküvi, Kuruyemiş, Dondurma vb.)
-      6. "İçecekler": (Su, Kola, Gazoz, Çay, Kahve vb.)
-      7. "Diğer": (Diğer yenebilir gıdalar)
+      GÖREV 4: FİŞ TARİHİ TESPİTİ (ÇOK ÖNEMLİ)
+      Fişin üzerinde yazan alışveriş tarihini bul.
+      - Tarihi "YYYY-MM-DD" formatına çevir (Örn: 2025-11-29).
+      - Eğer tarih okunamazsa bugünün tarihini ver.
 
       VERİ FORMATI (JSON):
-      - "product_name": Ürünün adı (Boyut bilgisi parantez içinde olsun. Örn: "Tavuk Baget (1kg)"). Markayı isme dahil etme, 'brand' alanına yaz.
-      - "brand": Marka (Örn: "Torku", "Pınar"). Yoksa null.
-      - "price": Son fiyat (Sayı).
-      - "amount": Toplam adet (Sayı).
-      - "unit": Sadece "adet" kullan. (Litre veya Kg olsa bile 'adet' yaz, boyutu isme parantez içine ekle).
-      - "days_to_expire": Tahmini raf ömrü (gün).
-
-      CEVAP ÖRNEĞİ:
       {
-        "market_name": "MIGROS",
+        "market_name": "MARKET ADI",
+        "date": "YYYY-MM-DD",
         "items": [
-          {"product_name": "Yağlı Süt (1L)", "brand": "Torku", "category": "Süt & Kahvaltılık", "price": 100.00, "days_to_expire": 7, "amount": 4, "unit": "adet"},
-          {"product_name": "Baldo Pirinç (2.5kg)", "brand": "Efsane", "category": "Temel Gıda & Bakliyat", "price": 135.00, "days_to_expire": 365, "amount": 1, "unit": "adet"}
+          {
+            "product_name": "Ürün Adı",
+            "brand": "Marka",
+            "price": 10.50,
+            "amount": 1,
+            "unit": "adet",
+            "category": "Temel Gıda",
+            "days_to_expire": 7
+          }
         ]
       }
       ''';
@@ -131,41 +115,44 @@ class OCRService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['candidates'] == null || (data['candidates'] as List).isEmpty) return {};
+        
+        // Güvenlik kontrolü: candidates boş mu?
+        if (data['candidates'] == null || (data['candidates'] as List).isEmpty) {
+          debugPrint("❌ Gemini boş yanıt döndü.");
+          return {};
+        }
 
         String content = data['candidates'][0]['content']['parts'][0]['text'];
 
-        // 1. ADIM: Markdown kod bloklarını temizle
+        // Markdown temizliği
         content = content.replaceAll(RegExp(r'^```json', multiLine: true), '')
                         .replaceAll(RegExp(r'^```', multiLine: true), '')
                         .trim();
 
-        // 2. ADIM: JSON'u ayıkla
         int startIndex = content.indexOf('{');
         int endIndex = content.lastIndexOf('}');
 
         if (startIndex != -1 && endIndex != -1) {
           String cleanJson = content.substring(startIndex, endIndex + 1);
-          
           try {
             Map<String, dynamic> resultData = jsonDecode(cleanJson);
             lastScannedResult = resultData;
-            debugPrint("✅ Gıda Odaklı Okuma Başarılı: ${resultData['items'].length} ürün.");
+            debugPrint("✅ Fiş Okundu! Tarih: ${resultData['date']}");
             return resultData;
           } catch (e) {
             debugPrint("❌ JSON Parse Hatası: $e");
             return {};
           }
         } else {
-          debugPrint("❌ JSON formatı bulunamadı. Gelen Ham Veri: $content");
+          debugPrint("❌ JSON formatı bulunamadı. Gelen: $content");
           return {};
         }
       } else {
-        debugPrint("❌ HTTP HATA: ${response.statusCode}");
+        debugPrint("❌ HTTP HATA: ${response.statusCode} - ${response.body}");
         return {};
       }
     } catch (e) {
-      debugPrint("🔥 HATA: $e");
+      debugPrint("🔥 GENEL HATA: $e");
       return {};
     }
   }
