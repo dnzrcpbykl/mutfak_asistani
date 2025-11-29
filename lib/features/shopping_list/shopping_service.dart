@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart'; // Debug print için
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/models/shopping_item.dart';
@@ -6,6 +6,20 @@ import '../../core/models/shopping_item.dart';
 class ShoppingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // --- TÜRKÇE KARAKTER DÜZELTME YARDIMCISI ---
+  String _normalize(String text) {
+    return text
+        .replaceAll('İ', 'i')
+        .replaceAll('I', 'ı')
+        .replaceAll('Ğ', 'ğ')
+        .replaceAll('Ü', 'ü')
+        .replaceAll('Ş', 'ş')
+        .replaceAll('Ö', 'ö')
+        .replaceAll('Ç', 'ç')
+        .toLowerCase()
+        .trim();
+  }
 
   // --- YARDIMCI: EVDEN ATILMA DURUMUNDA PROFİLİ TEMİZLE ---
   Future<void> _handlePermissionDenied() async {
@@ -19,7 +33,7 @@ class ShoppingService {
   }
 
   // --- DİNAMİK REFERANS BULUCU ---
-  Future<CollectionReference<ShoppingItem>> _getListRef() async {
+  Future<CollectionReference> _getListRef() async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("Kullanıcı yok");
 
@@ -33,14 +47,13 @@ class ShoppingService {
       collectionPath = 'users/${user.uid}/shopping_list';
     }
 
-    return _firestore.collection(collectionPath).withConverter<ShoppingItem>(
-      fromFirestore: (snapshot, _) => ShoppingItem.fromFirestore(snapshot),
-      toFirestore: (item, _) => item.toFirestore(),
-    );
+    // Model dönüşümü yapmadan direkt CollectionReference döndürüyoruz (Map yapısı için)
+    return _firestore.collection(collectionPath);
   }
 
-  // --- CANLI TAKİP ---
-  Stream<List<ShoppingItem>> getShoppingList() {
+  // --- CANLI TAKİP (YENİ: ZENGİN VERİ İÇİN MAP DÖNDÜRÜR) ---
+  // Model yerine Map döndürüyoruz ki resim ve market listesini UI'da işleyebilelim
+  Stream<List<Map<String, dynamic>>> getShoppingListStream() {
     final user = _auth.currentUser;
     if (user == null) return const Stream.empty();
 
@@ -54,46 +67,65 @@ class ShoppingService {
 
       try {
         return _firestore.collection(path)
-            .withConverter<ShoppingItem>(
-              fromFirestore: (s, _) => ShoppingItem.fromFirestore(s),
-              toFirestore: (i, _) => i.toFirestore())
             .orderBy('createdAt', descending: true)
             .snapshots()
-            .map((snap) => snap.docs.map((d) => d.data()).toList())
+            .map((snap) => snap.docs.map((d) {
+                  final data = d.data();
+                  data['id'] = d.id; // Doküman ID'sini veriye ekle
+                  return data;
+                }).toList())
             .handleError((e) {
                debugPrint("Shopping Stream Hatası: $e");
-               return <ShoppingItem>[];
+               return <Map<String, dynamic>>[];
             });
       } catch (e) {
-        return const Stream<List<ShoppingItem>>.empty();
+        return const Stream<List<Map<String, dynamic>>>.empty();
       }
     }).asyncExpand((stream) => stream).asBroadcastStream();
   }
 
-  // --- CRUD İŞLEMLERİ (GÜNCELLENDİ: Hata Korumalı) ---
+  // --- CRUD İŞLEMLERİ (GÜNCELLENDİ: RESİM VE MARKET DESTEĞİ) ---
 
-  Future<bool> addItem(String name) async {
+  // Artık isim haricinde opsiyonel olarak resim ve market listesi de alıyor
+  Future<bool> addItem({
+    required String name,
+    String? imageUrl,
+    List<dynamic>? markets
+  }) async {
     final cleanName = name.trim();
     if (cleanName.isEmpty) return false;
+
+    // Eklenen kelimeyi normalize et (Örn: "SÜT" -> "süt")
+    final normalizedInput = _normalize(cleanName);
 
     try {
       final ref = await _getListRef();
       
-      // Mevcutları kontrol et
+      // Mevcutları kontrol et (Aynı isimde ürün var mı?)
       final activeItemsSnapshot = await ref.where('isCompleted', isEqualTo: false).get();
+      
       for (var doc in activeItemsSnapshot.docs) {
-        if (doc.data().name.toLowerCase() == cleanName.toLowerCase()) {
-          return false;
+        final data = doc.data() as Map<String, dynamic>;
+        // İsim kontrolü
+        if (_normalize(data['name'] ?? '') == normalizedInput) {
+          return false; // Zaten var, ekleme yapma
         }
       }
 
-      await ref.add(ShoppingItem(id: '', name: cleanName, isCompleted: false));
+      // Veritabanına ZENGİN İÇERİKLE kaydet
+      await ref.add({
+        'name': cleanName,
+        'isCompleted': false,
+        'imageUrl': imageUrl ?? '', // Resim URL'i varsa kaydet
+        'markets': markets ?? [],   // Market fiyatları listesi varsa kaydet
+        'createdAt': FieldValue.serverTimestamp(),
+      });
       return true;
 
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
-        await _handlePermissionDenied(); // Profili düzelt
-        return await addItem(name); // İşlemi tekrar dene (Bireysele ekler)
+        await _handlePermissionDenied();
+        return await addItem(name: name, imageUrl: imageUrl, markets: markets);
       }
       rethrow;
     }

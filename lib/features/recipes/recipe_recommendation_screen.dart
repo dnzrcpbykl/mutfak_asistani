@@ -712,7 +712,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                             onPressed: () async {
                               for (var item in missing) {
                                 String cleanItem = _cleanIngredientForShopping(item);
-                                await _shoppingService.addItem(cleanItem);
+                                await _shoppingService.addItem(name:cleanItem);
                               }
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Eklendi!"), backgroundColor: Colors.green));

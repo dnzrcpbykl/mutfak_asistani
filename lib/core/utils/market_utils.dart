@@ -11,6 +11,7 @@ class MarketUtils {
     if (name.contains('şok') || name.contains('sok')) return 'assets/markets/sok.png';
     if (name.contains('migros')) return 'assets/markets/migros.png';
     if (name.contains('carrefoursa')) return 'assets/markets/carrefoursa.png';
+    if (name.contains('tarim_kredi')) return 'assets/markets/tarim_kredi.png';
     
     return ''; 
   }
@@ -34,6 +35,8 @@ class MarketUtils {
       url = "https://www.migros.com.tr/";
     } else if (name.contains('carrefoursa')) {
       url = "https://www.carrefoursa.com/";
+    } else if (name.contains('tarim_kredi')) {
+      url = "https://www.tkkoop.com.tr/";
     }
 
     if (url.isNotEmpty) {

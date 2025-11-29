@@ -74,58 +74,126 @@ class MarketService {
     return totalCost;
   }
 
-  // --- 3. AKILLI ÜRÜN ARAMA (SEARCH BAR İÇİN) ---
-  Future<List<Map<String, dynamic>>> searchProducts(String query) async {
-    if (query.length < 2) return [];
+  // --- 2. AKILLI ARAMA MOTORU (BURASI DEĞİŞTİ) ---
+  Future<List<Map<String, dynamic>>> searchProducts(String userQuery) async {
+    // Arama boşsa dön
+    if (userQuery.trim().isEmpty) return [];
 
-    final searchKey = _normalizeForSearch(query);
+    // Kullanıcının sorgusunu temizle (Boşlukları KORU!)
+    // Örn: "Süt" -> "sut"
+    final String cleanQuery = _normalizeWithSpaces(userQuery); 
+    final List<String> queryWords = cleanQuery.split(' '); // ["sut"]
 
-    try {
-      final snapshot = await _firestore.collection('market_prices')
-          .orderBy('ingredientName') 
-          .startAt([query.toUpperCase()]) 
-          .endAt(['${query.toLowerCase()}\uf8ff']) 
-          .limit(100) 
-          .get();
+    final snapshot = await _firestore.collection('market_prices').get();
 
-      List<Map<String, dynamic>> rawResults = [];
+    List<Map<String, dynamic>> scoredResults = [];
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      // Veritabanındaki 'title'ı alıyoruz (normalizedTitle değil!)
+      // Örn: "Torku Süt 1 Lt"
+      final String originalTitle = data['title'] ?? '';
       
-      // Veritabanından gelen verileri güvenli şekilde Map'e çevir
-      rawResults = snapshot.docs.map((doc) {
-        final data = (doc.data() as Map<String, dynamic>?) ?? {};
-        return {
-          'id': doc.id,
-          'title': data['ingredientName'] ?? 'İsimsiz',
-          'imageUrl': data['imageUrl'] ?? '',
-          'markets': data['markets'] ?? [],
-          'price': data['price'] ?? 0.0,
-        };
-      }).toList();
+      // Başlığı temizle ve kelimelere ayır
+      // "torku sut 1 lt"
+      final String cleanTitle = _normalizeWithSpaces(originalTitle);
+      final List<String> titleWords = cleanTitle.split(' ');
 
-      // Akıllı Filtreleme
-      final List<Map<String, dynamic>> filteredResults = [];
-      for (var item in rawResults) {
-        String title = _normalizeForSearch(item['title']);
-        if (title.contains(searchKey)) {
-          filteredResults.add(item);
+      int score = 0;
+
+      // --- PUANLAMA ALGORİTMASI ---
+      
+      // KURAL 1: Tam Eşleşme (En Yüksek Puan)
+      // Kullanıcı "süt" yazdı, ürünün içinde tam olarak "süt" kelimesi geçiyor mu?
+      // "sütlü" -> "süt" değildir. "süt" -> "süt"tür.
+      if (titleWords.contains(cleanQuery)) {
+        score += 100;
+      }
+
+      // KURAL 2: Başlangıç Eşleşmesi (Yüksek Puan)
+      // Ürün ismi aranan kelimeyle mi başlıyor? Örn: "Sütaş Süt..."
+      if (cleanTitle.startsWith(cleanQuery)) {
+        score += 50;
+      }
+
+      // KURAL 3: Kelime Başlangıcı (Orta Puan)
+      // Ürünün herhangi bir kelimesi arananla başlıyor mu?
+      // Örn: "Pınar Süt" -> "Süt" kelimesi "süt" ile başlıyor.
+      // Örn: "Sütlü Çikolata" -> "Sütlü" kelimesi "süt" ile başlıyor.
+      for (var word in titleWords) {
+        if (word.startsWith(cleanQuery)) {
+          score += 20;
+          // Eğer kelime tam olarak eşleşmiyorsa (yani "sütlü" gibi ek almışsa) puanı biraz kıralım
+          if (word.length > cleanQuery.length) {
+            score -= 5; // "Sütlü"yü, saf "Süt"ün altına atmak için
+          }
         }
       }
 
-      // Akıllı Sıralama (Puanlama)
-      filteredResults.sort((a, b) {
-        String titleA = _normalizeForSearch(a['title']);
-        String titleB = _normalizeForSearch(b['title']);
-        int scoreA = _calculateRelevance(titleA, searchKey);
-        int scoreB = _calculateRelevance(titleB, searchKey);
-        return scoreB.compareTo(scoreA); 
-      });
+      // KURAL 4: Düz İçerme (Düşük Puan - Yedek)
+      // Hiçbir kelime uymuyor ama harfler içinde geçiyor
+      if (score == 0 && cleanTitle.contains(cleanQuery)) {
+        score += 1;
+      }
 
-      return filteredResults;
+      // Eğer puan aldıysa listeye ekle
+      if (score > 0) {
+        scoredResults.add({
+          'id': doc.id,
+          'title': originalTitle,
+          'imageUrl': data['imageUrl'] ?? '',
+          'markets': data['markets'] ?? [],
+          'price': _extractMinPrice(data['markets']),
+          'score': score, // Sıralama için puanı tutuyoruz
+        });
+      }
+    }
+
+    // --- SONUÇLARI SIRALA ---
+    // Puanı yüksek olan en üste, puanlar eşitse fiyata göre sırala
+    scoredResults.sort((a, b) {
+      int scoreCompare = b['score'].compareTo(a['score']);
+      if (scoreCompare != 0) return scoreCompare;
+      return (a['price'] as double).compareTo(b['price'] as double);
+    });
+
+    return scoredResults;
+  }
+
+  // --- YENİ HELPER: BOŞLUKLARI KORUYAN NORMALİZASYON ---
+  // "Sütlü Çikolata" -> "sutlu cikolata" (Boşluklar duruyor!)
+  String _normalizeWithSpaces(String text) {
+    return text.toLowerCase()
+        .replaceAll('İ', 'i')
+        .replaceAll('I', 'ı')
+        .replaceAll('ı', 'i') 
+        .replaceAll('ğ', 'g')
+        .replaceAll('ü', 'u')
+        .replaceAll('ş', 's')
+        .replaceAll('ö', 'o')
+        .replaceAll('ç', 'c')
+        // Boşlukları SİLMİYORUZ, tireleri boşluğa çeviriyoruz ki kelimeler ayrılsın
+        .replaceAll('-', ' ') 
+        .replaceAll(RegExp(r'\s+'), ' ') // Çoklu boşlukları teke düşür
+        .trim();
+  }
+
+  // En düşük fiyatı bulma yardımcısı (Aynı)
+  double _extractMinPrice(dynamic markets) {
+    if (markets == null || markets is! List || markets.isEmpty) return 0.0;
+    try {
+      double minP = 999999.0;
+      for (var m in markets) {
+        double p = (m['price'] as num?)?.toDouble() ?? 0.0;
+        if (p > 0 && p < minP) minP = p;
+      }
+      return minP == 999999.0 ? 0.0 : minP;
     } catch (e) {
-      debugPrint("Arama Hatası: $e");
-      return [];
+      return 0.0;
     }
   }
+
+  
 
   // --- 4. EŞLEŞTİRME VE FİYAT BULMA (LİSTE İÇİN) ---
   List<Map<String, dynamic>> findAllPricesFor(String listRowName, List<MarketPrice> allPrices) {

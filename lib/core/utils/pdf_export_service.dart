@@ -1,20 +1,19 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../models/shopping_item.dart';
+// import '../models/shopping_item.dart'; // Artık modele gerek yok, map kullanıyoruz
 import '../models/recipe.dart';
 
 class PdfExportService {
   
-  // Font yükleme (Türkçe karakter sorunu yaşamamak için)
+  // Font yükleme
   Future<pw.Font> _getFont() async {
-    // Varsayılan fontu kullanıyoruz, Türkçe karakter sorunu olursa Google Fonts eklenebilir.
-    // Şimdilik standart font ile devam edelim.
     return pw.Font.helvetica(); 
   }
 
   // --- 1. ALIŞVERİŞ LİSTESİ PDF'İ ---
-  Future<void> shareShoppingList(List<ShoppingItem> items) async {
+  // GÜNCELLEME: items parametresi artık Map listesi
+  Future<void> shareShoppingList(List<Map<String, dynamic>> items) async {
     final pdf = pw.Document();
     final font = await _getFont();
     final now = DateTime.now();
@@ -38,29 +37,35 @@ class PdfExportService {
             pw.Text("Tarih: ${now.day}.${now.month}.${now.year}", style: pw.TextStyle(font: font)),
             pw.Divider(),
             pw.SizedBox(height: 10),
-            ...items.map((item) => pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 4),
-              child: pw.Row(
-                children: [
-                  pw.Container(
-                    width: 10, height: 10,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(),
-                      color: item.isCompleted ? PdfColors.grey300 : null
-                    )
-                  ),
-                  pw.SizedBox(width: 10),
-                  pw.Text(
-                    item.name, 
-                    style: pw.TextStyle(
-                      font: font, 
-                      fontSize: 14,
-                      decoration: item.isCompleted ? pw.TextDecoration.lineThrough : null
-                    )
-                  ),
-                ]
-              )
-            )),
+            ...items.map((item) {
+              // Map'ten verileri alıyoruz
+              final name = item['name'] as String;
+              final isCompleted = item['isCompleted'] == true;
+
+              return pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(vertical: 4),
+                child: pw.Row(
+                  children: [
+                    pw.Container(
+                      width: 10, height: 10,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(),
+                        color: isCompleted ? PdfColors.grey300 : null
+                      )
+                    ),
+                    pw.SizedBox(width: 10),
+                    pw.Text(
+                      name, 
+                      style: pw.TextStyle(
+                        font: font, 
+                        fontSize: 14,
+                        decoration: isCompleted ? pw.TextDecoration.lineThrough : null
+                      )
+                    ),
+                  ]
+                )
+              );
+            }),
             pw.SizedBox(height: 20),
             pw.Divider(),
             pw.Align(
@@ -71,12 +76,10 @@ class PdfExportService {
         },
       ),
     );
-
-    // Paylaşım penceresini aç
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'alisveris_listesi.pdf');
   }
 
-  // --- 2. TARİF PDF'İ ---
+  // --- 2. TARİF PDF'İ (DEĞİŞMEDİ) ---
   Future<void> shareRecipe(Recipe recipe) async {
     final pdf = pw.Document();
     final font = await _getFont();
