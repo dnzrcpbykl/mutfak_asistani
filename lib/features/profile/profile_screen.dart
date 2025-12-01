@@ -114,14 +114,15 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             Positioned(
                               bottom: 0,
-                              right: 0,
+                              right: 4, // Biraz daha içeri aldık
                               child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: Colors.blue,
+                                padding: const EdgeInsets.all(8), // Paddingi artırdık
+                                decoration: BoxDecoration(
+                                  color: AppTheme.neonCyan, // Mavi yerine temanın ana rengini kullandık
                                   shape: BoxShape.circle,
+                                  border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 3), // Kalın bir çerçeve ekledik
                                 ),
-                                child: const Icon(Icons.edit, size: 16, color: Colors.white),
+                                child: const Icon(Icons.edit, size: 18, color: Colors.black), // İkon rengini zıt yaptık
                               ),
                             ),
                           ],

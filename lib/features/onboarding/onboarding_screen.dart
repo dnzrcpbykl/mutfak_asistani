@@ -101,7 +101,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             
             // Noktalar ve Butonun olduğu alt kısım (Sabit Yükseklik)
             Padding(
-              padding: const EdgeInsets.fromLTRB(30, 0, 30, 30),
+              padding: EdgeInsets.fromLTRB(30, 0, 30, 30 + MediaQuery.of(context).padding.bottom), // Alt boşluk için cihaz alt çubuğunu da ekledik
               child: Column(
                 children: [
                   // Noktalar

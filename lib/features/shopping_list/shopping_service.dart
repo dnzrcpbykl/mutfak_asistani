@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../core/models/shopping_item.dart';
 
 class ShoppingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -156,6 +155,24 @@ class ShoppingService {
       for (var doc in snapshot.docs) {
         await doc.reference.delete();
       }
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') await _handlePermissionDenied();
+    }
+  }
+
+  Future<void> deleteAllItems() async {
+    try {
+      final ref = await _getListRef();
+      final snapshot = await ref.get();
+      
+      // Batch işlemi ile toplu silme (Daha performanslı)
+      WriteBatch batch = _firestore.batch();
+      
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      await batch.commit();
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') await _handlePermissionDenied();
     }

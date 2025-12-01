@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
-import 'dart:ui'; // EKLENDİ: Blur efekti için gerekli
+import 'dart:ui'; // Blur efekti için gerekli
 
 // Modeller
 import '../../core/models/recipe.dart';
@@ -20,8 +20,9 @@ import '../profile/profile_service.dart';
 
 // Provider
 import 'recipe_provider.dart';
-import '../profile/premium_screen.dart'; // EKLENDİ: Kilitli alana basınca yönlendirmek için
+import '../profile/premium_screen.dart'; 
 import '../../core/utils/pdf_export_service.dart';
+
 // Ekranlar
 import 'cooking_mode_screen.dart';
 import '../../core/widgets/recipe_loading_skeleton.dart';
@@ -42,9 +43,9 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
   final AdService _adService = AdService(); 
   final ProfileService _profileService = ProfileService(); 
   final TextEditingController _customPromptController = TextEditingController(); 
-  final PdfExportService _pdfService = PdfExportService(); // EKLENDİ
+  final PdfExportService _pdfService = PdfExportService();
 
-  // EKLENDİ: Kullanıcının premium durumu bu değişkende tutulacak
+  // Kullanıcının premium durumu
   bool _isUserPremium = false;
 
   @override
@@ -52,12 +53,13 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     super.initState();
     _adService.loadRewardedAd(); 
     
-    // EKLENDİ: Premium durumunu kontrol et
+    // Premium durumunu kontrol et
     _profileService.checkUsageRights().then((val) {
        if(mounted) setState(() => _isUserPremium = val['isPremium']);
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Sayfa her açıldığında gereksiz yükleme yapmasın (forceRefresh: false)
       Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
     });
   }
@@ -245,7 +247,8 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
       if (!mounted) return;
       Navigator.pop(context); 
 
-      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+      // Yeni tarifler üretildi, bu yüzden listeyi ZORLA YENİLE
+      Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Şef yeni tarifleri hazırladı!"), backgroundColor: Colors.green));
 
     } catch (e) {
@@ -253,35 +256,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
     }
-  }
-
-  String _cleanIngredientForShopping(String rawName) {
-    String cleaned = rawName.replaceAll(RegExp(r'\s*\(.*?\)'), '');
-    if (cleaned.contains(',')) {
-      cleaned = cleaned.split(',').first;
-    }
-    cleaned = cleaned.replaceFirst(RegExp(r'^[\d\s\.,/-]+'), '');
-
-    final List<String> unitsToRemove = [
-      'su bardağı', 'çay bardağı', 'yemek kaşığı', 'çay kaşığı', 'tatlı kaşığı', 'kahve fincanı',
-      'orta boy', 'büyük boy', 'küçük boy',
-      'kilogram', 'gram', 'litre', 'mililitre',
-      'paket', 'demet', 'tutam', 'dilim', 'diş', 'baş', 'kutu', 'kavanoz', 'avuç',
-      'adet', 'tane', 
-      'kg', 'gr', 'lt', 'ml'
-    ];
-
-    cleaned = cleaned.trim();
-    for (var unit in unitsToRemove) {
-      if (cleaned.toLowerCase().startsWith(unit.toLowerCase())) {
-        cleaned = cleaned.substring(unit.length).trim();
-      }
-    }
-    cleaned = cleaned.replaceFirst(RegExp(r'^[\d\s\.,/-]+'), '');
-    if (cleaned.isNotEmpty) {
-      cleaned = cleaned[0].toUpperCase() + cleaned.substring(1);
-    }
-    return cleaned.trim();
   }
 
   Widget _buildDifficultyVisual(String difficulty) {
@@ -392,9 +366,10 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             icon: const Icon(Icons.refresh),
             tooltip: "Listeyi Yenile",
             onPressed: () {
-              recipeProvider.fetchAndCalculateRecommendations();
+              Provider.of<RecipeProvider>(context, listen: false)
+                  .fetchAndCalculateRecommendations(forceRefresh: true);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Liste güncelleniyor...")),
+                const SnackBar(content: Text("Fiyatlar ve tarifler güncelleniyor...")),
               );
             },
           ),
@@ -420,7 +395,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
   Widget _buildContent(BuildContext context, RecipeProvider provider) {
     final recommendations = provider.recommendations;
-    final allPrices = provider.allPrices;
+    final allPrices = provider.allPrices; // List<MarketPrice>
     final colorScheme = Theme.of(context).colorScheme;
 
     if (recommendations.isEmpty) {
@@ -501,10 +476,12 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
+    // --- FİYAT HESAPLAMA EKLENDİ ---
     double missingCost = 0;
     if (missing.isNotEmpty) {
       missingCost = _marketService.calculateMissingCost(missing, allPrices);
     }
+    // --------------------------------
 
     Color statusColor = matchPercent == 1.0 
         ? const Color(0xFF00E676) 
@@ -533,9 +510,8 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         ),
         title: Text(recipe.name, style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
         trailing: Row(
-      mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // PAYLAŞ BUTONU (PREMIUM)
             IconButton(
               icon: const Icon(Icons.share, color: Colors.blueGrey),
               onPressed: () async {
@@ -546,7 +522,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                 }
               },
             ),
-            // FAVORİ BUTONU (MEVCUT)
             IconButton(
               icon: Icon(Icons.favorite_border, color: colorScheme.secondary),
               onPressed: () async {
@@ -556,7 +531,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               },
             ),
           ],
-),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -569,6 +544,8 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                         : "${missing.length} eksik malzeme", 
                     style: TextStyle(color: statusColor)
                   ),
+            
+            // --- FİYAT GÖSTERİMİ (BU KISIM EKLENDİ) ---
             if (missing.isNotEmpty && missingCost > 0)
                Padding(
                  padding: const EdgeInsets.only(top: 4.0),
@@ -580,6 +557,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                    ],
                  ),
                ),
+            // ------------------------------------------
           ],
         ),
         children: [
@@ -588,7 +566,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- EKLENDİ: BESİN DEĞERLERİ (PREMIUM ÖZELLİK) ---
+                // BESİN DEĞERLERİ
                 Container(
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   padding: const EdgeInsets.all(12),
@@ -610,7 +588,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                       ),
                       const SizedBox(height: 8),
                       
-                      // Eğer Premium ise Değerleri Göster, Değilse Bulanıklaştır
                       _isUserPremium 
                         ? Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -626,7 +603,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                // Bulanık İçerik
                                 ImageFiltered(
                                   imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
                                   child: Row(
@@ -638,7 +614,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                                     ],
                                   ),
                                 ),
-                                // Kilit Yazısı
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
@@ -656,7 +631,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     ],
                   ),
                 ),
-                // -------------------------------------------------------
 
                 if (subTips.isNotEmpty)
                   Container(
@@ -709,14 +683,44 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                             icon: const Icon(Icons.add_shopping_cart, size: 18),
                             label: const Text("Listeye Ekle"),
                             style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
+                            
+                            // --- AKILLI LİSTE EKLEME (BURASI GÜNCELLENDİ) ---
                             onPressed: () async {
-                              for (var item in missing) {
-                                String cleanItem = _cleanIngredientForShopping(item);
-                                await _shoppingService.addItem(name:cleanItem);
+                              // 1. Ürünleri Bul (Resimli, Fiyatlı)
+                              List<MarketPrice> productsToAdd = _marketService.findMatchingProducts(missing, allPrices);
+
+                              int addedCount = 0;
+                              for (var product in productsToAdd) {
+                                // 2. Market bilgisini formatla
+                                List<Map<String, dynamic>> marketList = product.markets.map((m) => {
+                                  'marketName': m.marketName,
+                                  'price': m.price,
+                                  'unitPriceText': m.unitPriceText ?? ''
+                                }).toList();
+
+                                // 3. Zengin veriyi listeye ekle
+                                bool result = await _shoppingService.addItem(
+                                  name: product.title, 
+                                  imageUrl: product.imageUrl,
+                                  markets: marketList
+                                );
+                                
+                                if (result) addedCount++;
                               }
+
                               if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Eklendi!"), backgroundColor: Colors.green));
+                              
+                              if (addedCount > 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("$addedCount ürün akıllı eşleşme ile eklendi!"), backgroundColor: Colors.green)
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Bu ürünler zaten listede var."), backgroundColor: Colors.orange)
+                                );
+                              }
                             },
+                            // ------------------------------------------------
                           ),
                         ),
                       ],
@@ -733,7 +737,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                       children: [
                         _buildInfoChip(context, Icons.timer_outlined, "${recipe.prepTime} dk"),
                         const SizedBox(width: 12),
-                        
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
@@ -750,7 +753,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                           ),
                         ),
                         const SizedBox(width: 12),
-                        
                         _buildInfoChip(context, Icons.restaurant, recipe.category),
                       ],
                     ),
@@ -797,7 +799,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               await _pantryService.consumeIngredients(recipe.ingredients);
               if (!context.mounted) return;
               Navigator.pop(context); 
-              Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations();
+              Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations(forceRefresh: true);
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncellendi!")));
             },
             child: const Text("Evet, Düş"),
@@ -827,7 +829,6 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
   
-  // EKLENDİ: Besin Değeri Kartı İçin Yardımcı Widget
   Widget _buildMacroItem(String label, String value, Color color) {
     return Column(
       children: [

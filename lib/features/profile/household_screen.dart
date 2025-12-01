@@ -290,7 +290,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text("Bu kodu eşinle paylaşarak aynı kileri yönetebilirsin.", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  const Text("Bu kodu ailenle paylaşarak aynı kileri yönetebilirsiniz.", style: TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
             ),
@@ -398,7 +398,8 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
             onPressed: _leaveHousehold,
             icon: const Icon(Icons.logout, color: Colors.red),
             label: const Text("Bu Haneden Ayrıl", style: TextStyle(color: Colors.red)),
-          )
+          ),
+          SizedBox(height: 20 + MediaQuery.of(context).padding.bottom),
         ],
       ),
     );

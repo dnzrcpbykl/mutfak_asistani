@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'shopping_service.dart'; // Güncellediğimiz servis
-import '../../core/models/market_price.dart';
+import 'shopping_service.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/empty_state_widget.dart';
 import '../market/market_service.dart';
 import '../../core/utils/market_utils.dart';
-import '../../core/utils/pdf_export_service.dart'; // Eğer bu yoksa importu silin
-// import '../../core/models/shopping_item.dart'; // Artık Map kullanıyoruz, buna gerek kalmayabilir
+import '../../core/utils/pdf_export_service.dart';
+
+// --- YENİ EKLENEN IMPORTLAR (Kiler Entegrasyonu İçin) ---
+import '../pantry/pantry_service.dart';
+import '../../core/models/pantry_item.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; 
+// --------------------------------------------------------
 
 class ShoppingListView extends StatefulWidget {
   const ShoppingListView({super.key});
@@ -19,6 +25,9 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
   final ShoppingService _service = ShoppingService();
   final MarketService _marketService = MarketService();
   
+  // --- YENİ SERVİS ---
+  final PantryService _pantryService = PantryService(); 
+
   @override
   bool get wantKeepAlive => true;
 
@@ -28,6 +37,185 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const ProductSearchSheet(),
+    );
+  }
+
+  // --- YARDIMCI: İSİM TEMİZLEME MOTORU ---
+  String _cleanProductNameForPantry(String fullName) {
+    String name = fullName;
+    
+    // 1. Gramaj ve detayları parantez içine almadan temizle
+    // Örn: "Yumurta Organik 10lu M 53-62 Gr" -> "Yumurta Organik 10lu"
+    
+    // Sona gelen "Gr", "KG", "ML" gibi birimleri sil
+    name = name.replaceAll(RegExp(r'\s*\d+(\.\d+)?\s*(gr|gram|kg|kilogram|lt|ml|litre)\s*$', caseSensitive: false), '');
+    
+    // "53-62 Gr" gibi aralıkları sil
+    name = name.replaceAll(RegExp(r'\s*\d+-\d+\s*(gr|gram)\s*', caseSensitive: false), '');
+
+    // "M boy", "L boy" gibi ifadeleri sil
+    name = name.replaceAll(RegExp(r'\s+[SMLX]+\s+Boy\s*', caseSensitive: false), ' ');
+
+    return name.trim();
+  }
+
+  // --- GÜNCELLENEN FONKSİYON: ÜRÜNÜ KİLERE TAŞI ---
+  Future<void> _moveItemToPantry(Map<String, dynamic> item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. İSMİ TEMİZLE
+    String originalName = item['name'];
+    String cleanName = _cleanProductNameForPantry(originalName);
+    
+    String imageUrl = item['imageUrl'] ?? '';
+    List markets = item['markets'] ?? [];
+    
+    double bestPrice = 0.0;
+    String bestMarket = "Bilinmiyor";
+    
+    if (markets.isNotEmpty) {
+      List<dynamic> sortedMarkets = List.from(markets);
+      sortedMarkets.sort((a, b) => (a['price'] as num).compareTo(b['price'] as num));
+      bestPrice = (sortedMarkets.first['price'] as num).toDouble();
+      bestMarket = sortedMarkets.first['marketName'] ?? "Bilinmiyor";
+    }
+
+    // 2. KATEGORİ TAHMİNİ (Kilerde doğru sekmeye gitmesi için)
+    // Basit bir tahmin yapıp PantryService'e göndereceğiz, o da normalize edecek.
+    String estimatedCategory = "Diğer";
+    String lowerName = cleanName.toLowerCase();
+    if (lowerName.contains("yumurta") || lowerName.contains("peynir")) estimatedCategory = "Süt Ürünleri ve Kahvaltılık";
+    else if (lowerName.contains("kıyma") || lowerName.contains("salam")) estimatedCategory = "Et, Tavuk ve Balık";
+    else if (lowerName.contains("domates") || lowerName.contains("biber")) estimatedCategory = "Meyve ve Sebze";
+
+    // 3. Kullanıcıya SKT, Miktar ve BİRİM sormak için Diyalog
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 7)); 
+    TextEditingController quantityController = TextEditingController(text: "1");
+    
+    // Varsayılan Birim (Otomatik Algıla)
+    String selectedUnit = "adet";
+    if (lowerName.contains("kıyma") || lowerName.contains("tavuk") || lowerName.contains("et")) {
+      selectedUnit = "kg"; // Et ürünleri genelde kg olur
+      quantityController.text = "0.5"; // Yarım kilo varsayılan
+    } else if (lowerName.contains("süt") || lowerName.contains("su")) {
+      selectedUnit = "lt";
+    }
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder( // Dropdown değişimi için StatefulBuilder şart
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text("Kilere Ekle: $cleanName"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: quantityController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: "Miktar"),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    DropdownButton<String>(
+                      value: selectedUnit,
+                      items: ["adet", "kg", "gr", "lt", "ml", "paket"]
+                          .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setDialogState(() => selectedUnit = val);
+                      },
+                    )
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("Son Kullanma Tarihi"),
+                  subtitle: Text(DateFormat('dd.MM.yyyy').format(selectedDate)),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => selectedDate = picked);
+                    }
+                  },
+                )
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("İptal")),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx); 
+                  
+                  final newItem = PantryItem(
+                    id: '', 
+                    userId: user.uid,
+                    ingredientId: 'shop_${DateTime.now().millisecondsSinceEpoch}',
+                    ingredientName: cleanName, // Temiz isim
+                    quantity: double.tryParse(quantityController.text.replaceAll(',', '.')) ?? 1.0,
+                    unit: selectedUnit, // Seçilen birim
+                    expirationDate: selectedDate,
+                    createdAt: Timestamp.now(),
+                    brand: '', 
+                    marketName: bestMarket,
+                    price: bestPrice, 
+                    category: estimatedCategory, // Tahmini kategori
+                    pieceCount: 1,
+                  );
+
+                  await _pantryService.addPantryItem(newItem);
+                  await _service.deleteItem(item['id']);
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("$cleanName kilere taşındı!"), backgroundColor: Colors.green),
+                    );
+                  }
+                },
+                child: const Text("Kaydet ve Taşı"),
+              )
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  // --- YENİ FONKSİYON: TOPLU SİLME ONAYI ---
+  void _confirmDeleteAll() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Listeyi Temizle?"),
+        content: const Text("Alışveriş listesindeki TÜM ürünler silinecek. Bu işlem geri alınamaz."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Vazgeç")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _service.deleteAllItems();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Liste temizlendi.")),
+                );
+              }
+            },
+            child: const Text("Evet, Hepsini Sil"),
+          )
+        ],
+      ),
     );
   }
 
@@ -49,7 +237,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
 
         return Scaffold(
           floatingActionButton: Padding(
-            padding: const EdgeInsets.only(bottom: 80.0),
+            padding: EdgeInsets.only(bottom: 80.0 + MediaQuery.of(context).padding.bottom),
             child: FloatingActionButton.extended(
               onPressed: _showAddProductSheet,
               backgroundColor: colorScheme.primary,
@@ -70,16 +258,28 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                       "${items.length} Ürün",
                       style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.bold),
                     ),
-                    if (hasCompletedItems)
-                      TextButton.icon(
-                        onPressed: () async {
-                          await _service.clearCompleted();
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Temizlendi.")));
-                        },
-                        icon: const Icon(Icons.delete_sweep, size: 20),
-                        label: const Text("Tamamlananları Sil"),
-                        style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-                      ),
+                    Row(
+                      children: [
+                        // TAMAMLANANLARI SİL (Eski Buton)
+                        if (hasCompletedItems)
+                          IconButton(
+                            icon: const Icon(Icons.playlist_remove, color: Colors.orange),
+                            tooltip: "Tamamlananları Sil",
+                            onPressed: () async {
+                              await _service.clearCompleted();
+                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tamamlananlar silindi.")));
+                            },
+                          ),
+                        
+                        // TÜMÜNÜ SİL (YENİ BUTON)
+                        if (items.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.delete_forever, color: Colors.red),
+                            tooltip: "Listeyi Komple Temizle",
+                            onPressed: _confirmDeleteAll,
+                          ),
+                      ],
+                    )
                   ],
                 ),
               ),
@@ -94,7 +294,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                       )
                     : ListView.builder(
                         itemCount: items.length,
-                        padding: const EdgeInsets.only(bottom: 100),
+                        padding: EdgeInsets.only(bottom: 100 + MediaQuery.of(context).padding.bottom),
                         itemBuilder: (context, index) {
                           final item = items[index];
                           final String id = item['id'];
@@ -121,10 +321,9 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                 padding: const EdgeInsets.all(12.0),
                                 child: Column(
                                   children: [
-                                    // --- 1. SATIR: Checkbox, Resim, İsim ---
+                                    // 1. SATIR
                                     Row(
                                       children: [
-                                        // CHECKBOX
                                         Transform.scale(
                                           scale: 1.2,
                                           child: Checkbox(
@@ -134,8 +333,6 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                             onChanged: (val) => _service.toggleStatus(id, isCompleted),
                                           ),
                                         ),
-                                        
-                                        // RESİM (Varsa Göster)
                                         if (imageUrl.isNotEmpty)
                                           Container(
                                             width: 50, height: 50,
@@ -149,8 +346,6 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                               ),
                                             ),
                                           ),
-
-                                        // İSİM
                                         Expanded(
                                           child: Text(
                                             name,
@@ -162,10 +357,17 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                             ),
                                           ),
                                         ),
+                                        
+                                        // --- KİLERE EKLEME BUTONU (YENİ) ---
+                                        IconButton(
+                                          icon: const Icon(Icons.kitchen, color: Colors.green),
+                                          tooltip: "Kilere Taşı",
+                                          onPressed: () => _moveItemToPantry(item),
+                                        ),
                                       ],
                                     ),
-
-                                    // --- 2. SATIR: MARKETLER (Varsa Göster) ---
+                                    
+                                    // 2. SATIR: MARKETLER
                                     if (!isCompleted && markets.isNotEmpty) ...[
                                       const Divider(height: 16),
                                       SizedBox(
@@ -175,11 +377,10 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                           itemCount: markets.length,
                                           itemBuilder: (context, mIndex) {
                                             final m = markets[mIndex];
-                                            // Veritabanı yapısından verileri al
                                             final String mName = m['marketName'] ?? '';
                                             final double price = (m['price'] as num?)?.toDouble() ?? 0.0;
                                             final String logoPath = MarketUtils.getLogoPath(mName);
-                                            final bool isCheapest = mIndex == 0; // İlk sıradaki en ucuz varsayımı
+                                            final bool isCheapest = mIndex == 0; 
 
                                             return GestureDetector(
                                               onTap: () => MarketUtils.launchMarketLink(mName),
@@ -193,14 +394,11 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                                 ),
                                                 child: Row(
                                                   children: [
-                                                    // Logo
                                                     if (logoPath.isNotEmpty)
                                                       Image.asset(logoPath, height: 16, width: 40, fit: BoxFit.contain)
                                                     else
                                                       const Icon(Icons.store, size: 16, color: Colors.grey),
-                                                    
                                                     const SizedBox(width: 4),
-                                                    // Fiyat
                                                     Text(
                                                       "${price.toStringAsFixed(2)} ₺",
                                                       style: TextStyle(
@@ -233,7 +431,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
   }
 }
 
-// --- ARAMA VE EKLEME PANELİ ---
+// ... ProductSearchSheet Sınıfı Değişmedi (Aynı Kalabilir) ...
 class ProductSearchSheet extends StatefulWidget {
   const ProductSearchSheet({super.key});
   @override
@@ -246,12 +444,10 @@ class _ProductSearchSheetState extends State<ProductSearchSheet> {
   final ShoppingService _shoppingService = ShoppingService();
   
   List<Map<String, dynamic>> _searchResults = [];
-  // Seçilenleri artık obje olarak tutuyoruz (isim, resim, marketler vb.)
-  final List<Map<String, dynamic>> _pendingItems = []; 
+  final List<Map<String, dynamic>> _pendingItems = [];
   bool _isSearching = false;
   Timer? _debounce;
 
-  // Akıllı Arama Normalizasyonu
   String _normalizeForSmartSearch(String text) {
     return text.toLowerCase()
         .replaceAll('İ', 'i').replaceAll('I', 'ı').replaceAll('ı', 'i')
@@ -270,37 +466,52 @@ class _ProductSearchSheetState extends State<ProductSearchSheet> {
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
     setState(() => _isSearching = true);
-    
-    final allPrices = await _marketService.getAllPrices(); 
-    final searchKey = _normalizeForSmartSearch(query);
 
-    final filtered = allPrices.where((marketItem) {
-      final normalizedItemTitle = _normalizeForSmartSearch(marketItem.ingredientName);
-      return normalizedItemTitle.contains(searchKey);
-    }).toList();
+    try {
+      final allPrices = await _marketService.getAllPrices(); 
+      final searchKey = _normalizeForSmartSearch(query);
 
-    // Sonuçları Grupla ve Formatla
-    // Artık tam ürün objesini oluşturuyoruz
-    final uniqueResults = <String, Map<String, dynamic>>{};
-    
-    // NOT: getAllPrices fonksiyonu artık "MarketPrice" dönüyor olabilir ama
-    // bizim burada "searchProducts" gibi zengin veri dönen bir metoda ihtiyacımız var.
-    // MarketService'de yazdığımız "searchProducts" metodunu kullanacağız.
-    final richResults = await _marketService.searchProducts(query);
+      final filtered = allPrices.where((marketItem) {
+        final normalizedItemTitle = _normalizeForSmartSearch(marketItem.title); 
+        return normalizedItemTitle.contains(searchKey);
+      }).toList();
 
-    // Gelen sonuçları tekilleştir
-    for (var item in richResults) {
-      final title = item['title'];
-      if (!uniqueResults.containsKey(title)) {
-        uniqueResults[title] = item;
+      final uniqueResults = <String, Map<String, dynamic>>{};
+      
+      for (var product in filtered) {
+        final title = product.title;
+        if (!uniqueResults.containsKey(title)) {
+          final marketList = product.markets.map((m) => {
+            'marketName': m.marketName,
+            'price': m.price,
+            'unitPriceText': m.unitPriceText
+          }).toList();
+
+          double minPrice = 0;
+          if (marketList.isNotEmpty) {
+             final prices = marketList.map((m) => (m['price'] as num).toDouble()).toList();
+             prices.sort();
+             minPrice = prices.first;
+          }
+
+          uniqueResults[title] = {
+            'title': title,
+            'imageUrl': product.imageUrl,
+            'markets': marketList, 
+            'price': minPrice,
+          };
+        }
       }
-    }
 
-    if (mounted) {
-      setState(() {
-        _searchResults = uniqueResults.values.toList();
-        _isSearching = false;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = uniqueResults.values.toList();
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Arama Hatası: $e");
+      if(mounted) setState(() => _isSearching = false);
     }
   }
 
@@ -315,15 +526,13 @@ class _ProductSearchSheetState extends State<ProductSearchSheet> {
     });
   }
 
-  // --- KRİTİK: EKLEME İŞLEMİ ---
   void _commitItems() async {
     int count = 0;
     for (var item in _pendingItems) {
-      // Servise sadece isim değil, RESİM ve MARKETLERİ de gönderiyoruz
       bool added = await _shoppingService.addItem(
         name: item['title'], 
         imageUrl: item['imageUrl'],
-        markets: item['markets'] // Market listesi (fiyatlar, logolar burada)
+        markets: item['markets']
       );
       if (added) count++;
     }
@@ -378,14 +587,7 @@ class _ProductSearchSheetState extends State<ProductSearchSheet> {
                       final imageUrl = item['imageUrl'];
                       final markets = item['markets'] as List;
                       final isSelected = _pendingItems.any((i) => i['title'] == title);
-
-                      // En uygun fiyatı bul
-                      double minPrice = 0;
-                      if (markets.isNotEmpty) {
-                        final prices = markets.map((m) => (m['price'] as num).toDouble()).toList();
-                        prices.sort();
-                        minPrice = prices.first;
-                      }
+                      double minPrice = item['price'] ?? 0.0;
 
                       return ListTile(
                         onTap: () => _toggleSelection(item),

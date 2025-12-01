@@ -115,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 // Bu sınıf sayesinde sekme değişse bile veriler silinmez (KeepAlive)
 class PantryTab extends StatefulWidget {
   const PantryTab({super.key});
-
   @override
   State<PantryTab> createState() => _PantryTabState();
 }
@@ -126,12 +125,19 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
 
+  // --- GÜNCELLENEN KATEGORİ LİSTESİ (VERİTABANI İLE BİREBİR) ---
   final List<String> _categories = [
-    "Tümü", "Meyve & Sebze", "Et & Tavuk & Balık", "Süt & Kahvaltılık",
-    "Temel Gıda & Bakliyat", "Atıştırmalık", "İçecekler", "Diğer"
+    "Tümü", 
+    "Meyve ve Sebze", 
+    "Et, Tavuk ve Balık", 
+    "Süt Ürünleri ve Kahvaltılık",
+    "Temel Gıda", 
+    "İçecek", 
+    "Atıştırmalık ve Tatlı", 
+    "Temizlik ve Kişisel Bakım Ürünleri",
+    "Diğer"
   ];
 
-  // BU SATIR ÇOK ÖNEMLİ: Sayfayı canlı tutar
   @override
   bool get wantKeepAlive => true;
 
@@ -152,7 +158,6 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     super.dispose();
   }
 
-  // ... (Yardımcı fonksiyonlar buraya taşındı) ...
   Color _getExpirationColor(DateTime? expirationDate) {
     if (expirationDate == null) return AppTheme.neonCyan;
     final now = DateTime.now();
@@ -165,26 +170,74 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     return const Color(0xFF69F0AE);
   }
 
-  String _normalizeCategory(String aiCategory) {
-    if (aiCategory.contains("Sebze") || aiCategory.contains("Meyve")) return "Meyve & Sebze";
-    if (aiCategory.contains("Et") || aiCategory.contains("Tavuk") || aiCategory.contains("Balık")) return "Et & Tavuk & Balık";
-    if (aiCategory.contains("Süt") || aiCategory.contains("Peynir") || aiCategory.contains("Yoğurt") || aiCategory.contains("Kahvaltılık")) return "Süt & Kahvaltılık";
-    if (aiCategory.contains("Bakliyat") || aiCategory.contains("Yağ") || aiCategory.contains("Makarna") || aiCategory.contains("Temel")) return "Temel Gıda & Bakliyat";
-    if (aiCategory.contains("İçecek")) return "İçecekler";
-    if (aiCategory.contains("Atıştırmalık") || aiCategory.contains("Çikolata")) return "Atıştırmalık";
-    if (_categories.contains(aiCategory)) return aiCategory;
+  // --- GÜNCELLENEN KATEGORİ EŞLEŞTİRİCİ ---
+  String _normalizeCategory(String dbCategory) {
+    final cat = dbCategory.toLowerCase(); 
+
+    // 1. Et & Balık (GÜÇLENDİRİLDİ)
+    // "şarküteri", "salam", "sosis", "kıyma", "köfte" gibi kelimeler eklendi.
+    if (cat.contains("et") || cat.contains("tavuk") || cat.contains("balık") || 
+        cat.contains("şarküteri") || cat.contains("salam") || cat.contains("sosis") || 
+        cat.contains("sucuk") || cat.contains("kıyma") || cat.contains("köfte") ||
+        cat.contains("kasap")) {
+      return "Et, Tavuk ve Balık";
+    }
+
+    // 2. Süt & Kahvaltılık (GÜÇLENDİRİLDİ)
+    // "yumurta", "peynir", "kaymak", "tereyağ" zaten vardı ama emin olalım.
+    if (cat.contains("süt") || cat.contains("peynir") || cat.contains("yoğurt") || 
+        cat.contains("kahvaltı") || cat.contains("yumurta") || cat.contains("tereyağ") ||
+        cat.contains("margarin") || cat.contains("kaymak") || cat.contains("zeytin")) {
+      return "Süt Ürünleri ve Kahvaltılık";
+    }
+
+    // 3. Meyve & Sebze
+    if (cat.contains("meyve") || cat.contains("sebze") || cat.contains("yeşillik") || cat.contains("patates") || cat.contains("soğan")) {
+      return "Meyve ve Sebze";
+    }
+
+    // 4. Temel Gıda
+    if (cat.contains("bakliyat") || cat.contains("makarna") || cat.contains("un") || 
+        cat.contains("yağ") || cat.contains("baharat") || cat.contains("sos") || 
+        cat.contains("temel") || cat.contains("pirinç") || cat.contains("bulgur") ||
+        cat.contains("salça") || cat.contains("şeker") || cat.contains("tuz")) {
+      return "Temel Gıda";
+    }
+
+    // 5. İçecek
+    if (cat.contains("içecek") || cat.contains("su") || cat.contains("kahve") || cat.contains("çay") || cat.contains("kola") || cat.contains("gazoz") || cat.contains("meyve suyu")) {
+      return "İçecek";
+    }
+
+    // 6. Atıştırmalık
+    if (cat.contains("atıştırmalık") || cat.contains("çikolata") || cat.contains("bisküvi") || 
+        cat.contains("cips") || cat.contains("tatlı") || cat.contains("kek") || cat.contains("gofret") || cat.contains("kuruyemiş")) {
+      return "Atıştırmalık ve Tatlı";
+    }
+
+    // 7. Temizlik
+    if (cat.contains("temizlik") || cat.contains("bakım") || cat.contains("deterjan") || 
+        cat.contains("kağıt") || cat.contains("kozmetik") || cat.contains("şampuan") || cat.contains("sabun")) {
+      return "Temizlik ve Kişisel Bakım Ürünleri";
+    }
+
+    if (_categories.contains(dbCategory)) return dbCategory;
+    
     return "Diğer";
   }
   
+  // --- İKON EŞLEŞTİRME (YENİ İSİMLERE GÖRE) ---
   IconData _getCategoryIcon(String category) {
-    final cat = category.toLowerCase();
-    if (cat.contains("meyve") || cat.contains("sebze")) return Icons.eco;
-    if (cat.contains("et") || cat.contains("tavuk") || cat.contains("balık")) return Icons.kebab_dining;
-    if (cat.contains("süt") || cat.contains("kahvaltı") || cat.contains("peynir")) return Icons.egg_alt;
-    if (cat.contains("bakliyat") || cat.contains("makarna") || cat.contains("un")) return Icons.grain;
-    if (cat.contains("atıştırmalık") || cat.contains("çikolata")) return Icons.cookie;
-    if (cat.contains("içecek") || cat.contains("su")) return Icons.local_drink;
-    return Icons.category;
+    switch (category) {
+      case "Meyve ve Sebze": return Icons.eco;
+      case "Et, Tavuk ve Balık": return Icons.kebab_dining;
+      case "Süt Ürünleri ve Kahvaltılık": return Icons.egg_alt;
+      case "Temel Gıda": return Icons.rice_bowl; 
+      case "İçecek": return Icons.local_drink;
+      case "Atıştırmalık ve Tatlı": return Icons.cookie;
+      case "Temizlik ve Kişisel Bakım Ürünleri": return Icons.cleaning_services;
+      default: return Icons.category;
+    }
   }
 
   String _formatQuantity(double quantity) {
@@ -193,75 +246,70 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
   }
 
   void _showQuantityDialog(PantryItem item, bool isIncrement) {
-    final controller = TextEditingController();
-    double defaultAmount = 1.0;
-    if (item.pieceCount > 1 && item.quantity > 0) {
-      defaultAmount = item.quantity / item.pieceCount;
-    } else {
-      if (item.unit.toLowerCase() == 'gr' || item.unit.toLowerCase() == 'g') defaultAmount = 100;
-      if (item.unit.toLowerCase() == 'ml') defaultAmount = 200;
-    }
-    controller.text = _formatQuantity(defaultAmount);
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).cardTheme.color,
-        title: Text(isIncrement ? "Stok Ekle" : "Stok Düş"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("${item.ingredientName} (${item.unit})"),
-            if (item.pieceCount > 1) 
-              Text("Şu an: ${item.pieceCount} Paket", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: isIncrement ? "Eklenecek Miktar" : "Kullanılan Miktar",
-                suffixText: item.unit,
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
-          ElevatedButton(
-            onPressed: () async {
-              final val = double.tryParse(controller.text.replaceAll(',', '.'));
-              if (val != null && val > 0) {
-                double newQuantity = isIncrement ? item.quantity + val : item.quantity - val;
-                int newPieceCount = item.pieceCount;
-                if (item.pieceCount > 0) {
-                  double singlePackageSize = item.quantity / item.pieceCount;
-                  if ((val - singlePackageSize).abs() < 0.1) {
-                     if (isIncrement) {
-                       newPieceCount++;
-                     } else {
-                       newPieceCount--;
-                     }
-                  }
-                }
-                if (newQuantity <= 0) {
-                   await _pantryService.deletePantryItem(item.id);
-                } else {
-                   await _pantryService.updatePantryItemQuantity(item.id, newQuantity, newPieceCount: newPieceCount > 0 ? newPieceCount : 1);
-                }
-                if (context.mounted) Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isIncrement ? Colors.green : Colors.orange,
-              foregroundColor: Colors.white
-            ),
-            child: Text(isIncrement ? "Ekle" : "Düş"),
-          )
-        ],
-      ),
-    );
+     final controller = TextEditingController();
+     double defaultAmount = 1.0;
+     if (item.pieceCount > 1 && item.quantity > 0) {
+       defaultAmount = item.quantity / item.pieceCount;
+     } else {
+       if (item.unit.toLowerCase() == 'gr' || item.unit.toLowerCase() == 'g') defaultAmount = 100;
+       if (item.unit.toLowerCase() == 'ml') defaultAmount = 200;
+     }
+     controller.text = _formatQuantity(defaultAmount);
+     showDialog(
+       context: context,
+       builder: (context) => AlertDialog(
+         backgroundColor: Theme.of(context).cardTheme.color,
+         title: Text(isIncrement ? "Stok Ekle" : "Stok Düş"),
+         content: Column(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             Text("${item.ingredientName} (${item.unit})"),
+             if (item.pieceCount > 1) 
+               Text("Şu an: ${item.pieceCount} Paket", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+             const SizedBox(height: 10),
+             TextField(
+               controller: controller,
+               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+               autofocus: true,
+               decoration: InputDecoration(
+                 labelText: isIncrement ? "Eklenecek Miktar" : "Kullanılan Miktar",
+                 suffixText: item.unit,
+                 border: const OutlineInputBorder(),
+               ),
+             ),
+           ],
+         ),
+         actions: [
+           TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+           ElevatedButton(
+             onPressed: () async {
+               final val = double.tryParse(controller.text.replaceAll(',', '.'));
+               if (val != null && val > 0) {
+                 double newQuantity = isIncrement ? item.quantity + val : item.quantity - val;
+                 int newPieceCount = item.pieceCount;
+                 if (item.pieceCount > 0) {
+                   double singlePackageSize = item.quantity / item.pieceCount;
+                   if ((val - singlePackageSize).abs() < 0.1) {
+                      if (isIncrement) newPieceCount++; else newPieceCount--;
+                   }
+                 }
+                 if (newQuantity <= 0) {
+                    await _pantryService.deletePantryItem(item.id);
+                 } else {
+                    await _pantryService.updatePantryItemQuantity(item.id, newQuantity, newPieceCount: newPieceCount > 0 ? newPieceCount : 1);
+                 }
+                 if (context.mounted) Navigator.pop(context);
+               }
+             },
+             style: ElevatedButton.styleFrom(
+               backgroundColor: isIncrement ? Colors.green : Colors.orange,
+               foregroundColor: Colors.white
+             ),
+             child: Text(isIncrement ? "Ekle" : "Düş"),
+           )
+         ],
+       ),
+     );
   }
 
   void _showEditDialog(PantryItem item) {
@@ -270,7 +318,11 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     final unitController = TextEditingController(text: item.unit);
     final pieceCountController = TextEditingController(text: item.pieceCount.toString());
     DateTime? tempDate = item.expirationDate;
-    String selectedCategory = item.category;
+    
+    // Normalize edilmiş kategori ile başlat
+    String selectedCategory = _normalizeCategory(item.category);
+    // Eğer listede yoksa 'Diğer'e düşür
+    if (!_categories.contains(selectedCategory)) selectedCategory = "Diğer";
 
     showDialog(
       context: context,
@@ -295,14 +347,18 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   const SizedBox(height: 10),
                   TextField(controller: pieceCountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Kaç Paket? (Opsiyonel)")),
                   const SizedBox(height: 10),
+                  
+                  // DROPDOWN (YENİ KATEGORİLER)
                   DropdownButtonFormField<String>(
-                    initialValue: _categories.contains(selectedCategory) ? selectedCategory : "Diğer",
+                    value: selectedCategory,
                     decoration: const InputDecoration(labelText: "Kategori"),
                     items: _categories.where((c) => c != "Tümü").map((String category) {
-                      return DropdownMenuItem(value: category, child: Text(category));
+                      return DropdownMenuItem(value: category, child: Text(category, style: const TextStyle(fontSize: 14)));
                     }).toList(),
                     onChanged: (val) => setDialogState(() => selectedCategory = val ?? "Diğer"),
+                    isExpanded: true, // Uzun isimlerin taşmaması için
                   ),
+                  
                   const SizedBox(height: 10),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -337,7 +393,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                       quantity: newQty,
                       unit: newUnit,
                       expirationDate: tempDate,
-                      category: selectedCategory,
+                      category: selectedCategory, // Yeni kategori kaydedilir
                       pieceCount: newPiece, 
                     );
                     if (mounted) Navigator.pop(context);
@@ -354,9 +410,9 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // KEEP ALIVE İÇİN ZORUNLU
+    super.build(context); // KeepAlive
     final colorScheme = Theme.of(context).colorScheme;
-
+    
     return StreamBuilder<List<PantryItem>>(
       stream: _pantryStream,
       builder: (context, snapshot) {
@@ -376,7 +432,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: "Kilerde ara (Örn: Süt, Makarna)",
+                  hintText: "Kilerde ara...",
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchQuery.isNotEmpty 
                     ? IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchController.clear(); FocusScope.of(context).unfocus(); }) 
@@ -413,7 +469,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                           Expanded(
                             child: TabBarView(
                               children: _categories.map((category) {
-                                return _buildCategoryList(category, allItems);
+                                 return _buildCategoryList(category, allItems);
                               }).toList(),
                             ),
                           ),
@@ -475,7 +531,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 border: Border.all(color: expirationColor.withOpacity(0.5)),
                 color: expirationColor.withOpacity(0.1),
               ),
-              child: Icon(_getCategoryIcon(item.category), color: expirationColor, size: 24),
+              child: Icon(_getCategoryIcon(_normalizeCategory(item.category)), color: expirationColor, size: 24),
             ),
             const SizedBox(width: 12),
             Expanded(

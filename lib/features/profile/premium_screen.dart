@@ -212,7 +212,8 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
                               ),
                             ],
                           ),
-                          const SizedBox(height: 20),
+                          // Alt kısma ekstra boşluk ekliyoruz ki kaydırınca tam görünsün
+                          SizedBox(height: 20 + MediaQuery.of(context).padding.bottom),
                         ],
                       ),
                     ),

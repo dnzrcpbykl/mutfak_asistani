@@ -69,9 +69,10 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: neonCyan,
-          foregroundColor: Colors.black, // Yazı rengi
+          foregroundColor: Colors.black,
           elevation: 5,
-          shadowColor: neonCyan.withOpacity(0.5), // Neon parama efekti
+          // Butonların mobilde daha rahat basılması için minimum yükseklik
+          minimumSize: const Size(double.infinity, 54), 
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

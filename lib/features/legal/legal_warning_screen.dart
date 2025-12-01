@@ -78,14 +78,26 @@ Uygulama içerisinde gösterilen market logoları (BİM, A101, Şok, Migros vb.)
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(20.0),
+            // EdgeInsets.all(20) yerine sadece yanlardan ve üstten verip,
+            // alt kısmı dinamik hale getiriyoruz.
+            padding: EdgeInsets.fromLTRB(
+              20, 
+              20, 
+              20, 
+              20 + MediaQuery.of(context).padding.bottom // <--- KRİTİK DÜZELTME
+            ),
             child: SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
                 onPressed: _acceptTerms,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                child: const Text("Okudum ve Kabul Ediyorum", style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, 
+                  foregroundColor: Colors.white,
+                  elevation: 4, // Biraz gölge ekleyerek daha "basılabilir" hissettirelim
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)) // Modern köşe
+                ),
+                child: const Text("Okudum ve Kabul Ediyorum", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
           )
