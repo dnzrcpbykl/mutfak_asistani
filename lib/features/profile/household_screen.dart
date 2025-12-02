@@ -120,7 +120,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
     );
   }
 
-  // --- EVDEN AYRILMA ---
+  // --- EVDEN AYRILMA (GÜVENLİ FİX) ---
   void _leaveHousehold() {
     showDialog(
       context: context,
@@ -131,10 +131,35 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
           TextButton(
             onPressed: () async {
+              // 1. Messenger'ı işlemden önce yakala (Context kaybolmadan)
+              final messenger = ScaffoldMessenger.of(context);
+              
+              // 2. Diyaloğu kapat
               Navigator.pop(context);
+              
+              // 3. Yükleniyor...
               setState(() => _isLoading = true);
-              await _householdService.leaveHousehold();
-              setState(() => _isLoading = false);
+
+              try {
+                // 4. Servis çağrısı (Burada PERMISSION_DENIED yiyordun)
+                await _householdService.leaveHousehold();
+                
+                // 5. Başarılı mesajı (Artık messenger değişkenini kullanıyoruz)
+                messenger.showSnackBar(
+                  const SnackBar(content: Text("Haneden başarıyla ayrıldın."), backgroundColor: Colors.green)
+                );
+                
+              } catch (e) {
+                // 6. Hata mesajı (Firebase hatası dönerse buraya düşer)
+                messenger.showSnackBar(
+                  SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red)
+                );
+              } finally {
+                // 7. Yükleniyor'u kapat (Eğer ekran hala açıksa)
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                }
+              }
             },
             child: const Text("Ayrıl", style: TextStyle(color: Colors.red)),
           ),

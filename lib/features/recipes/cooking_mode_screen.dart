@@ -1,5 +1,4 @@
 import 'dart:async';
-// FontFeature için gerekli
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -20,11 +19,11 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
   
-  // --- TTS (SES) DEĞİŞKENLERİ ---
+  // TTS (Ses)
   final FlutterTts _flutterTts = FlutterTts();
   bool _isSpeaking = false;
-  
-  // --- TIMER (ZAMANLAYICI) DEĞİŞKENLERİ ---
+
+  // Timer
   Timer? _countdownTimer;
   Duration _remainingTime = Duration.zero;
   bool _isTimerRunning = false;
@@ -37,61 +36,38 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
     _initTts();
   }
 
-  // --- DÜZELTİLEN TTS BAŞLATMA FONKSİYONU ---
   Future<void> _initTts() async {
     try {
-      // 1. Dil Ayarı (Bekleyerek)
       await _flutterTts.setLanguage("tr-TR");
-      
-      // 2. Hız ve Ton
-      await _flutterTts.setSpeechRate(0.5); // 0.5 normal konuşma hızıdır
+      await _flutterTts.setSpeechRate(0.5);
       await _flutterTts.setPitch(1.0);
-
-      // 3. iOS için ses kategorisi (Videoları durdurmadan konuşsun)
-      await _flutterTts.setIosAudioCategory(
-          IosTextToSpeechAudioCategory.playback,
-          [
-            IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
-            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
-            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
-          ],
-      );
-
-      // 4. Konuşma bittiğinde state'i güncelle (Daha kararlı yöntem)
-      await _flutterTts.awaitSpeakCompletion(true);
-
+      
       _flutterTts.setStartHandler(() {
         if (mounted) setState(() => _isSpeaking = true);
       });
-
       _flutterTts.setCompletionHandler(() {
         if (mounted) setState(() => _isSpeaking = false);
       });
-
       _flutterTts.setErrorHandler((msg) {
         if (mounted) setState(() => _isSpeaking = false);
-        debugPrint("TTS Hatası: $msg");
       });
-      
     } catch (e) {
       debugPrint("TTS Başlatma Hatası: $e");
     }
   }
 
-  // --- DÜZELTİLEN KONUŞMA FONKSİYONU ---
   Future<void> _speakStep({String? customText}) async {
     if (_isSpeaking) {
       await _flutterTts.stop();
       if (mounted) setState(() => _isSpeaking = false);
     } else {
-      String textToSpeak = customText ?? _steps[_currentStep];
+      String textToSpeak = customText ?? (_steps.isNotEmpty ? _steps[_currentStep] : "");
       if (textToSpeak.isNotEmpty) {
         await _flutterTts.speak(textToSpeak);
       }
     }
   }
 
-  // --- ZAMANLAYICI MANTIĞI ---
   void _startTimer(int minutes) {
     if (_countdownTimer != null) _countdownTimer!.cancel();
     setState(() {
@@ -105,8 +81,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         });
       } else {
         _stopTimer();
-        // Süre bitince sesli uyarı!
-        _speakStep(customText: "Süre doldu şefim! Bir sonraki adıma geçebilirsin.");
+        _speakStep(customText: "Süre doldu şefim! Kontrol etme zamanı.");
         _showTimeIsUpDialog();
       }
     });
@@ -193,21 +168,27 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   }
 
   List<String> _parseInstructions(String text) {
+    if (text.isEmpty) return ["Tarif adımları bulunamadı."];
     final numberSplit = text.split(RegExp(r'\d+\.\s+'));
     List<String> cleanList = numberSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
     if (cleanList.length > 1) return cleanList;
     final lineSplit = text.split('\n');
     cleanList = lineSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
     if (cleanList.length > 1) return cleanList;
-    final sentenceSplit = text.split('. ');
-    cleanList = sentenceSplit.where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
-    return cleanList.isNotEmpty ? cleanList : [text];
+    return [text];
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    // Progress hesabı (0'a bölünme hatasını önle)
+    double progress = 0.0;
+    if (_steps.isNotEmpty) {
+      progress = (_currentStep + 1) / _steps.length;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Pişirme Modu", style: TextStyle(color: colorScheme.onSurface)),
@@ -216,31 +197,28 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         centerTitle: true,
         iconTheme: IconThemeData(color: colorScheme.onSurface),
         actions: [
-          // ZAMANLAYICI BUTONU
           IconButton(
             icon: Icon(_isTimerRunning ? Icons.timer_off : Icons.timer),
             color: _isTimerRunning ? Colors.orange : colorScheme.primary,
             onPressed: _isTimerRunning ? _stopTimer : _showTimerDialog,
-            tooltip: "Sayaç",
           ),
-          // SESLİ OKUMA BUTONU
           IconButton(
             icon: Icon(_isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up),
             color: _isSpeaking ? Colors.red : colorScheme.primary,
-            iconSize: 28,
             onPressed: () => _speakStep(),
-            tooltip: "Adımı Oku",
           ),
           const SizedBox(width: 10),
         ],
       ),
       backgroundColor: theme.scaffoldBackgroundColor,
+      // SafeArea kullanmıyoruz ki alt bar tam otursun, padding'i içeride veririz
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch, // Yatayda fulle (Infinite width hatasını çözer)
         children: [
-          // --- AKTİF SAYAÇ GÖSTERGESİ ---
+          // --- SAYAÇ ---
           if (_isTimerRunning)
             Container(
-              width: double.infinity,
+              width: double.infinity, // Column stretch olduğu için burası güvenli
               color: Colors.orange.withOpacity(0.1),
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Center(
@@ -251,20 +229,22 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                     const SizedBox(width: 8),
                     Text(
                       _formatDuration(_remainingTime),
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange, fontFeatures: [FontFeature.tabularFigures()]),
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange),
                     ),
                   ],
                 ),
               ),
             ),
 
+          // --- PROGRESS BAR ---
           LinearProgressIndicator(
-            value: _steps.isNotEmpty ? (_currentStep + 1) / _steps.length : 1,
+            value: progress,
             backgroundColor: colorScheme.onSurface.withOpacity(0.1),
             color: colorScheme.primary,
             minHeight: 6,
           ),
           
+          // --- ADIMLAR (SAYFA) ---
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -322,15 +302,17 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             ),
           ),
 
+          // --- ALT KONTROLLER ---
           Container(
             color: theme.scaffoldBackgroundColor,
-            child: SafeArea(
+            child: SafeArea( // iPhone home bar için
               top: false,
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // GERİ BUTONU
                     if (_currentStep > 0)
                       ElevatedButton.icon(
                         onPressed: () {
@@ -345,8 +327,9 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                         ),
                       )
                     else 
-                      const SizedBox(width: 100),
+                      const SizedBox(width: 80), // Boşluk
 
+                    // İLERİ / TAMAMLA BUTONU
                     if (_currentStep < _steps.length - 1)
                       ElevatedButton.icon(
                         onPressed: () {

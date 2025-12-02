@@ -59,7 +59,6 @@ class HouseholdService {
   }
 
   // --- 2. AİLEYE KATIL (Üye) ---
-  // --- 2. AİLEYE KATIL (Üye) ---
   Future<void> joinHousehold(String inviteCode) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("Kullanıcı oturumu kapalı.");
@@ -98,7 +97,7 @@ class HouseholdService {
     });
   }
 
-  // --- 3. EVDEN AYRIL ---
+  // --- 3. EVDEN AYRIL (GÜNCELLENDİ: ZOMBIE DATA TEMİZLİĞİ) ---
   Future<void> leaveHousehold() async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -106,12 +105,47 @@ class HouseholdService {
     final String? householdId = await getCurrentHouseholdId();
     if (householdId == null) return;
 
-    // Üyelerden çıkar
-    await _firestore.collection('households').doc(householdId).update({
-      'members': FieldValue.arrayRemove([user.uid])
-    });
+    final householdRef = _firestore.collection('households').doc(householdId);
+    final householdDoc = await householdRef.get();
 
-    // Kullanıcı profilindeki hane bilgisini sil (Bireysele döner)
+    if (!householdDoc.exists) return;
+
+    final List<dynamic> members = householdDoc.data()?['members'] ?? [];
+
+    // SENARYO A: Evde kalan son kişi benim -> Evi tamamen sil
+    if (members.length <= 1) {
+      // 1. Alt koleksiyonları temizle (Pantry, Shopping List)
+      // Not: Firestore'da ana dokümanı silmek, alt koleksiyonları otomatik silmez.
+      final subCollections = ['pantry', 'shopping_list'];
+      for (var sub in subCollections) {
+        final subSnap = await householdRef.collection(sub).get();
+        for (var doc in subSnap.docs) {
+          await doc.reference.delete();
+        }
+      }
+      // 2. Evi sil
+      await householdRef.delete();
+      debugPrint("🧹 Son üye ayrıldı, hane ($householdId) ve alt verileri silindi.");
+    }
+    // SENARYO B: Evde başkaları var -> Sadece beni çıkar
+    else {
+      // Eğer ben yöneticiysem (owner), çıkmadan önce yetkiyi başkasına devretmeliyim.
+      // Basit çözüm: Listede benden sonraki ilk kişiyi (veya 0. indexi) yeni yönetici yap.
+      if (householdDoc.data()?['ownerId'] == user.uid) {
+        final newOwner = members.firstWhere((id) => id != user.uid, orElse: () => null);
+        if (newOwner != null) {
+           await householdRef.update({'ownerId': newOwner});
+           debugPrint("👑 Yönetici ayrıldı, yeni yönetici atandı: $newOwner");
+        }
+      }
+
+      await householdRef.update({
+        'members': FieldValue.arrayRemove([user.uid])
+      });
+    }
+
+    // 3. Kendi profilimi güncelle (Bireysele dön)
+    // 'currentHouseholdId' alanını siliyoruz.
     await _firestore.collection('users').doc(user.uid).update({
       'currentHouseholdId': FieldValue.delete(),
     });
@@ -129,6 +163,7 @@ class HouseholdService {
       'currentHouseholdId': FieldValue.delete(),
     });
 
+    // 3. Kullanıcının eski "bireysel" verileri duruyorsa temizle (Opsiyonel ama temizlik için iyi)
     await _clearUserPersonalData(memberId);
   }
 
@@ -180,8 +215,7 @@ class HouseholdService {
     for (var doc in shopSnapshot.docs) {
       var data = doc.data();
       // Kimin eklediğini belli etmek için ek alanlar (isteğe bağlı)
-      // data['addedBy'] = userId; 
-      
+      // data['addedBy'] = userId;
       await householdShopRef.add(data);
       await doc.reference.delete();
     }
@@ -189,7 +223,6 @@ class HouseholdService {
     debugPrint("✅ Kullanıcı ($userId) verileri Hane ($householdId) havuzuna taşındı.");
   }
   
-  // Hane Bilgisini Getir (İsim, Üyeler vb.)
   // --- Hane Bilgisini Getir (GÜNCELLENDİ: Daha Akıllı Stream) ---
   Stream<DocumentSnapshot?> getHouseholdStream() {
     final user = _auth.currentUser;

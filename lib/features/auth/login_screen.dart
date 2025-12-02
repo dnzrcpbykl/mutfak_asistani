@@ -94,11 +94,12 @@ Bu uygulama ("Mutfak Asistanı"), kişisel verilerinizi KVKK ve GDPR kapsamında
 - Alışveriş alışkanlıklarınıza dair istatistikler oluşturmak.
 
 4. VERİLERİN AKTARILMASI
-Verileriniz, hizmetin sağlanması amacıyla güvenli bulut sunucularında (Firebase) saklanmaktadır. AI işlemleri için veriler anonimleştirilerek işleme tabi tutulabilir. Yasal zorunluluklar dışında üçüncü kişilerle paylaşılmaz.
+Verileriniz, hizmetin sağlanması amacıyla güvenli bulut sunucularında (Firebase) saklanmaktadır.
+AI işlemleri için veriler anonimleştirilerek işleme tabi tutulabilir. Yasal zorunluluklar dışında üçüncü kişilerle paylaşılmaz.
 
 5. HAKLARINIZ
 Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kalıcı olarak silebilirsiniz.
-                """,
+""",
                 style: TextStyle(height: 1.5),
               ),
               const SizedBox(height: 20),
@@ -112,6 +113,88 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // --- YENİ EKLENEN: ŞİFRE SIFIRLAMA DİYALOGU ---
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController();
+    // Eğer giriş ekranında e-posta zaten yazılıysa, kolaylık olsun diye buraya da taşıyalım
+    if (_emailController.text.isNotEmpty) {
+      resetEmailController.text = _emailController.text;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardTheme.color,
+        title: const Text("Şifre Sıfırlama"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                "Hesabınıza ait e-posta adresinizi girin. Size bir sıfırlama bağlantısı göndereceğiz."),
+            const SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: "E-posta Adresi",
+                prefixIcon: Icon(Icons.email_outlined),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("İptal"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final email = resetEmailController.text.trim();
+              if (email.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text("Lütfen e-posta adresinizi girin.")),
+                );
+                return;
+              }
+
+              try {
+                // Firebase şifre sıfırlama maili gönder
+                await FirebaseAuth.instance
+                    .sendPasswordResetEmail(email: email);
+                if (mounted) {
+                  Navigator.pop(context); // Pencereyi kapat
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          "Sıfırlama bağlantısı e-posta adresinize gönderildi!"),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } on FirebaseAuthException catch (e) {
+                String errorMsg = "Bir hata oluştu.";
+                if (e.code == 'user-not-found')
+                  errorMsg = "Bu e-posta ile kayıtlı kullanıcı bulunamadı.";
+                if (e.code == 'invalid-email')
+                  errorMsg = "Geçersiz e-posta formatı.";
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(errorMsg), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            child: const Text("Gönder"),
+          ),
+        ],
       ),
     );
   }
@@ -138,10 +221,11 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
             () => _errorMessage = "Lütfen tüm alanları eksiksiz doldurun.");
         return;
       }
-      
+
       // KVKK KONTROLÜ (Sadece kayıt olurken)
       if (!_isKvkkAccepted) {
-        setState(() => _errorMessage = "Kayıt olmak için Aydınlatma Metni'ni onaylamanız gerekmektedir.");
+        setState(() => _errorMessage =
+            "Kayıt olmak için Aydınlatma Metni'ni onaylamanız gerekmektedir.");
         return;
       }
     }
@@ -186,7 +270,6 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
       );
     } on FirebaseAuthException catch (e) {
       String message = "Bir hata oluştu.";
-
       if (e.code == 'user-not-found' ||
           e.code == 'wrong-password' ||
           e.code == 'invalid-credential') {
@@ -292,6 +375,25 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                   "Şifre", Icons.lock_outline, _passwordController,
                   isObscure: true),
 
+              // --- YENİ EKLENEN: ŞİFREMİ UNUTTUM BUTONU ---
+              // Sadece Giriş Modunda (_isLogin) gösterilir
+              if (_isLogin)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _showForgotPasswordDialog,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 0, vertical: 4),
+                      foregroundColor: colorScheme.secondary,
+                    ),
+                    child: const Text("Şifremi Unuttum?",
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              // ---------------------------------------------
+
               // --- KVKK CHECKBOX (Sadece Kayıt Olurken) ---
               if (!_isLogin) ...[
                 const SizedBox(height: 10),
@@ -391,7 +493,7 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                               _isLogin = !_isLogin;
                               _errorMessage = null;
                               // Mod değişince checkbox'ı sıfırla
-                              _isKvkkAccepted = false; 
+                              _isKvkkAccepted = false;
                             });
                           },
                           child: RichText(

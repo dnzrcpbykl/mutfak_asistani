@@ -85,8 +85,9 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
     // Basit bir tahmin yapıp PantryService'e göndereceğiz, o da normalize edecek.
     String estimatedCategory = "Diğer";
     String lowerName = cleanName.toLowerCase();
-    if (lowerName.contains("yumurta") || lowerName.contains("peynir")) estimatedCategory = "Süt Ürünleri ve Kahvaltılık";
-    else if (lowerName.contains("kıyma") || lowerName.contains("salam")) estimatedCategory = "Et, Tavuk ve Balık";
+    if (lowerName.contains("yumurta") || lowerName.contains("peynir")) {
+      estimatedCategory = "Süt Ürünleri ve Kahvaltılık";
+    } else if (lowerName.contains("kıyma") || lowerName.contains("salam")) estimatedCategory = "Et, Tavuk ve Balık";
     else if (lowerName.contains("domates") || lowerName.contains("biber")) estimatedCategory = "Meyve ve Sebze";
 
     // 3. Kullanıcıya SKT, Miktar ve BİRİM sormak için Diyalog

@@ -785,22 +785,56 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
   void _showConsumeDialog(BuildContext context, Recipe recipe) {
     final colorScheme = Theme.of(context).colorScheme;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardTheme.color,
         title: Text("Ellerine Sağlık! 👨‍🍳", style: TextStyle(color: colorScheme.onSurface)),
-        content: Text("Yemeği tamamladın. Malzemeler stoktan düşülsün mü?", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7))),
+        content: Text(
+          "Yemeği tamamladın. Tarifteki miktarlar (${recipe.ingredients.length} kalem) kiler stoğundan düşülsün mü?",
+          style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
             onPressed: () async {
-              await _pantryService.consumeIngredients(recipe.ingredients);
-              if (!context.mounted) return;
-              Navigator.pop(context); 
-              Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations(forceRefresh: true);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncellendi!")));
+              Navigator.pop(context); // İlk diyaloğu kapat
+              
+              // Yükleniyor göster
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncelleniyor...")));
+              
+              // Akıllı düşüm işlemini başlat
+              final logs = await _pantryService.consumeIngredientsSmart(recipe.ingredients);
+              
+              // Listeyi yenile
+              if (mounted) {
+                 Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations(forceRefresh: true);
+                 
+                 // Sonuç Raporu Göster
+                 showDialog(
+                   context: context,
+                   builder: (ctx) => AlertDialog(
+                     title: const Text("Stok Raporu 📋"),
+                     content: SizedBox(
+                       height: 200,
+                       width: double.maxFinite,
+                       child: ListView.builder(
+                         itemCount: logs.length,
+                         itemBuilder: (c, i) => ListTile(
+                           dense: true,
+                           leading: const Icon(Icons.check, size: 16, color: Colors.green),
+                           title: Text(logs[i], style: const TextStyle(fontSize: 12)),
+                         ),
+                       ),
+                     ),
+                     actions: [
+                       TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Tamam"))
+                     ],
+                   )
+                 );
+              }
             },
             child: const Text("Evet, Düş"),
           ),

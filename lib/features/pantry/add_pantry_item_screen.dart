@@ -310,12 +310,24 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _scanBarcode,
+                            // onPressed: _scanBarcode, // ESKİ KOD: Kamerayı açıyordu
+                            
+                            // YENİ KOD: Uyarı veriyor
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Türkiye barkod altyapısı hazırlanıyor. Çok yakında! 🚧"),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 2),
+                                )
+                              );
+                            },
                             icon: const Icon(Icons.qr_code_2),
                             label: const Text("Barkod"),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade100,
-                              foregroundColor: Colors.blue.shade900,
+                              // RENK DEĞİŞİMİ: Mavi yerine Gri (Pasif Görünüm)
+                              backgroundColor: Colors.grey.shade300, 
+                              foregroundColor: Colors.grey.shade700, 
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),

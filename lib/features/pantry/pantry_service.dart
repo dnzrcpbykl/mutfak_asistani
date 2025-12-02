@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
+import '../../core/utils/unit_utils.dart';
 
 class PantryService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -194,25 +195,71 @@ class PantryService {
     });
   }
 
-  Future<void> consumeIngredients(List<String> ingredientNames) async {
+  // --- GÜNCELLENEN STOK DÜŞME MANTIĞI ---
+  Future<List<String>> consumeIngredientsSmart(List<String> recipeIngredients) async {
     final ref = await getPantryCollection();
     final pantrySnapshot = await ref.get();
     final pantryItems = pantrySnapshot.docs.map((doc) => doc.data()).toList();
+    
+    List<String> logs = []; // Kullanıcıya ne yaptığımızı raporlamak için
 
-    for (String ingredientName in ingredientNames) {
+    for (String recipeLine in recipeIngredients) {
+      // 1. Tarif satırını analiz et (Örn: "500 gr Kıyma")
+      final parsedRecipe = UnitUtils.parseAmount(recipeLine);
+      double neededQty = parsedRecipe['amount'];
+      String neededUnit = parsedRecipe['unit'];
+      
+      // Temizlenmiş isim (RecipeService'deki temizleyiciye benzer basit bir temizlik)
+      // Detaylı eşleşme için RecipeService'in _cleanName mantığı burada da kullanılabilir
+      // Şimdilik basit tutalım:
+      String cleanName = recipeLine.toLowerCase()
+          .replaceAll(RegExp(r'\d+'), '') // Sayıları sil
+          .replaceAll('gr', '').replaceAll('kg', '').replaceAll('lt', '').replaceAll('ml', '')
+          .replaceAll('adet', '').replaceAll('tane', '')
+          .trim();
+
       try {
+        // 2. Kilerde bu ürünü bul
         final itemToUpdate = pantryItems.firstWhere(
-          (item) => item.ingredientName.trim().toLowerCase() == ingredientName.trim().toLowerCase()
+          (item) => item.ingredientName.toLowerCase().contains(cleanName) || 
+                    cleanName.contains(item.ingredientName.toLowerCase())
         );
-        if (itemToUpdate.quantity > 1) {
-          await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1);
+
+        // 3. Hesaplama Yap
+        double? newQuantity = UnitUtils.tryDeduct(
+          itemToUpdate.quantity, 
+          itemToUpdate.unit, 
+          neededQty, 
+          neededUnit
+        );
+
+        if (newQuantity != null) {
+          // Mantıklı bir sonuç çıktıysa güncelle
+          if (newQuantity <= 0) {
+            await deletePantryItem(itemToUpdate.id);
+            logs.add("✅ ${itemToUpdate.ingredientName}: Tükendi ve silindi.");
+          } else {
+            await updatePantryItemQuantity(itemToUpdate.id, newQuantity);
+            logs.add("📉 ${itemToUpdate.ingredientName}: ${itemToUpdate.quantity} -> ${newQuantity.toStringAsFixed(2)} ${itemToUpdate.unit} güncellendi.");
+          }
         } else {
-          await deletePantryItem(itemToUpdate.id);
+          // Birim uyuşmazlığı varsa (Örn: Kilerde "Adet", Tarifte "Bardak")
+          // Varsayılan olarak 1 birim düşelim ama loglayalım
+          if (itemToUpdate.quantity > 1) {
+             await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1);
+             logs.add("⚠️ ${itemToUpdate.ingredientName}: Birim uyuşmazlığı. 1 adet düşüldü.");
+          } else {
+             await deletePantryItem(itemToUpdate.id);
+             logs.add("⚠️ ${itemToUpdate.ingredientName}: Tükendi.");
+          }
         }
+
       } catch (e) {
+        // Kilerde bulunamadıysa pas geç
         continue;
       }
     }
+    return logs;
   }
   
   // Eski kodlarınızın kırılmaması için (Legacy Getter) - Ama içi boşaltıldı
@@ -227,4 +274,6 @@ class PantryService {
         toFirestore: (i, _) => i.toFirestore(),
      );
   }
+
+  Future<void> consumeIngredients(List<String> ingredients) async {}
 }

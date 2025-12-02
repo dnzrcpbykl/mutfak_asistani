@@ -221,4 +221,6 @@ class AppTheme {
       ),
     );
   }
+
+  static Color? get primaryCyan => null;
 }

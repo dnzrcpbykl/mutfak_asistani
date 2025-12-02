@@ -9,7 +9,7 @@ class RecipeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Demirbaş Listesi
+  // Demirbaş Listesi (Evde kesin vardır varsayılanlar)
   static const Set<String> commonStaples = {
     'su', 'sıcak su', 'ılık su', 'soğuk su', 'buz',
     'tuz', 'deniz tuzu', 'kaya tuzu', 'karabiber', 
@@ -20,10 +20,10 @@ class RecipeService {
     'un', 'beyaz un'
   };
 
-  // Muadil Listesi
+  // Muadil Listesi (Eşleştirme şansını artırır)
   static const Map<String, List<String>> ingredientSubstitutes = {
     'tereyağı': ['margarin', 'sıvı yağ'],
-    'süt': ['yoğurt', 'süt tozu', 'su', 'krema'], 
+    'süt': ['yoğurt', 'süt tozu', 'su', 'krema', 'laktozsuz süt'], 
     'yoğurt': ['süt', 'kefir', 'ayran', 'süzme yoğurt'],
     'limon': ['limon suyu', 'sirke'],
     'domates': ['domates sosu', 'domates salçası', 'konserve domates'],
@@ -33,7 +33,9 @@ class RecipeService {
     'krema': ['süt', 'yoğurt'],
     'kıyma': ['dana kıyma', 'kuzu kıyma', 'köftelik kıyma'],
     'dana kıyma': ['kıyma', 'kuzu kıyma'],
-    'soğan': ['kuru soğan', 'beyaz soğan', 'gümüş soğan', 'mor soğan'], // Soğan türleri eklendi
+    'soğan': ['kuru soğan', 'beyaz soğan', 'gümüş soğan', 'mor soğan', 'arpacık soğan'],
+    'patates': ['taze patates', 'kızartmalık patates'],
+    'peynir': ['kaşar peyniri', 'beyaz peynir', 'tulum peyniri', 'lor peyniri'],
   };
 
   Future<List<Recipe>> getRecipes() async {
@@ -67,13 +69,16 @@ class RecipeService {
     });
   }
 
-  // --- AKILLI EŞLEŞTİRME MOTORU (GÜNCELLENDİ) ---
+  // --- GÜÇLENDİRİLMİŞ EŞLEŞTİRME MOTORU ---
   List<Map<String, dynamic>> matchRecipes(List<PantryItem> pantryItems, List<Recipe> allRecipes) {
     
-    // Kilerdeki ürünleri temizle ve listeye al
+    // Kilerdeki ürünleri "Normalize" ederek listeye al (soğan -> sogan)
     final Set<String> myIngredients = {};
     for (var item in pantryItems) {
+      // Hem normal halini hem de temizlenmiş halini havuza at
       myIngredients.add(_cleanName(item.ingredientName));
+      // Parçalayıp kelime kelime de ekle (Örn: "Kuru Soğan" -> "kuru", "sogan")
+      myIngredients.addAll(_cleanName(item.ingredientName).split(' '));
     }
 
     List<Map<String, dynamic>> results = [];
@@ -91,31 +96,24 @@ class RecipeService {
 
         // --- EŞLEŞME KONTROLÜ ---
         bool isDirectMatch = myIngredients.any((myIter) {
-          // 1. Tam Eşleşme
+          // 1. Tam Eşleşme (Normalize edilmiş halleriyle)
           if (myIter == recipeItemClean) return true;
           
-          // 2. Kapsama
+          // 2. Kapsama Kontrolü
+          // Örn: Kilerde "sogan" var, Tarifte "taze sogan" var.
           if (myIter.contains(recipeItemClean) || recipeItemClean.contains(myIter)) {
+             // Çok kısa kelimelerde (su, un, tuz) hatalı eşleşmeyi önle
              if (myIter.length < 3 || recipeItemClean.length < 3) return myIter == recipeItemClean;
 
-             // Negatif Filtre
-             const List<String> formChangingWords = ['suyu', 'bulyon', 'sos', 'toz', 'aroma', 'cips', 'kraker', 'meyveli'];
+             // Negatif Filtre: "Süt" ararken "Hindistan Cevizi Sütü" bulmasın
+             const List<String> formChangingWords = ['suyu', 'bulyon', 'sos', 'toz', 'aroma', 'cips', 'kraker', 'meyveli', 'reçeli'];
              for (var word in formChangingWords) {
+                // Eğer kilerdeki üründe "suyu" var ama tarifte yoksa, eşleşme sayma (Limon Suyu != Limon)
                 if (myIter.contains(word) && !recipeItemClean.contains(word)) return false; 
                 if (!myIter.contains(word) && recipeItemClean.contains(word)) return false;
              }
              return true;
           }
-
-          // 3. [YENİ] Kelime Bazlı Çapraz Kontrol ("Gümüş Soğan" == "Soğan Gümüş")
-          // Tarifteki kelimeleri ayır
-          List<String> recipeWords = recipeItemClean.split(' ').where((w) => w.length > 2).toList();
-          if (recipeWords.isNotEmpty) {
-            // Kilerdeki ürünün ismi, tarifteki TÜM kelimeleri içeriyor mu?
-            bool allWordsPresent = recipeWords.every((word) => myIter.contains(word));
-            if (allWordsPresent) return true;
-          }
-
           return false;
         });
 
@@ -127,8 +125,6 @@ class RecipeService {
         } else {
           // Muadil Kontrolü
           bool substituted = false;
-          // Anahtar kelime ile muadil ara
-          // Önce temiz isme bak, sonra kelime kelime bak (Örn: "kuru soğan" için "soğan" muadillerine bak)
           
           List<String> searchKeys = [recipeItemClean];
           searchKeys.addAll(recipeItemClean.split(' ')); 
@@ -136,9 +132,10 @@ class RecipeService {
           for (var key in searchKeys) {
              if (ingredientSubstitutes.containsKey(key)) {
                 for (var alt in ingredientSubstitutes[key]!) {
-                  if (myIngredients.any((my) => my.contains(alt))) {
+                  String cleanAlt = _normalize(alt); // Muadili de normalize et
+                  if (myIngredients.any((my) => my.contains(cleanAlt))) {
                     substituted = true;
-                    substitutionTips.add("${_capitalize(recipeItemClean)} yerine elindeki **${_capitalize(alt)}** kullanılabilir.");
+                    substitutionTips.add("${_capitalize(ingredient)} yerine elindeki **${_capitalize(alt)}** kullanılabilir.");
                     if (!isStaple) {
                       totalCoreIngredients++;
                       matchedCoreIngredients++;
@@ -152,7 +149,7 @@ class RecipeService {
 
           if (!substituted) {
             if (!isStaple) {
-              missingIngredients.add(ingredient); 
+              missingIngredients.add(ingredient);
               totalCoreIngredients++;
             }
           }
@@ -179,48 +176,62 @@ class RecipeService {
     return results;
   }
 
-  // --- TEMİZLEME MOTORU ---
+  // --- TEMİZLEME MOTORU (GÜNCELLENDİ) ---
   String _cleanName(String raw) {
-    String processed = raw.toLowerCase();
+    // 1. Önce Türkçe karakterleri düzelt (EN ÖNEMLİ KISIM)
+    String processed = _normalize(raw);
 
-    // 1. Parantez içlerini sil
+    // 2. Parantez içlerini sil
     processed = processed.replaceAll(RegExp(r'\(.*?\)', caseSensitive: false), '');
-
-    // 2. Yüzdeleri sil
+    
+    // 3. Yüzdeleri sil
     processed = processed.replaceAll(RegExp(r'%\d+'), '');
-
-    // 3. Marka isimlerini sil
+    
+    // 4. Marka isimlerini sil
     const List<String> brandsToRemove = [
-      'uzman kasap', 'pınar', 'sütaş', 'torku', 'içim', 'migros', 'carrefour', 'banvit', 'şenpiliç', 'dost', 'içimino'
+      'uzman kasap', 'pinar', 'sutas', 'torku', 'icim', 'migros', 'carrefour', 'banvit', 'senpilic', 'dost', 'icimino', 'tat'
     ];
     for (var brand in brandsToRemove) {
       processed = processed.replaceAll(brand, '');
     }
 
-    // 4. [YENİ] Kesirli Sayıları Sil (1/2, 3/4 vb.)
-    processed = processed.replaceAll(RegExp(r'\d+/\d+'), '');
+    // 5. Miktar ve Birimleri Sil (Regex Güçlendirildi)
+    // "1 adet", "1.5 kg", "2 yemek kaşığı" gibi ifadeleri temizler
+    processed = processed.replaceAll(RegExp(r'\d+[\.,]?\d*\s*(adet|tane|kg|kilogram|gr|gram|lt|litre|ml|mililitre|bardak|kasik|paket|kutu|demet|dilim)\s*', caseSensitive: false), '');
+    
+    // Sadece sayı kaldıysa onu da sil (Örn: "2 soğan" -> "2" kaldıysa sil)
+    processed = processed.replaceAll(RegExp(r'^\d+\s+'), '');
 
-    // 5. Miktar ve Birimleri Sil
-    processed = processed.replaceFirst(
-      RegExp(r'^[\d\s\.,/-]+(gr|gram|kg|kilogram|lt|litre|ml|mililitre|adet|tane|kaşık|yemek kaşığı|çay kaşığı|tatlı kaşığı|bardak|su bardağı|çay bardağı|paket|kutu|kavanoz|demet|tutam|dilim|diş|baş|fincan|kahve fincanı)\s*', caseSensitive: false), 
-      ''
-    );
-
-    // 6. Sıfatları Sil
+    // 6. Sıfatları Sil (Normalize edilmiş halleriyle)
     const List<String> adjectivesToRemove = [
-      'baldo', 'osmancık', 'yasmin', 'basmati', 
-      'süzme', 'tam yağlı', 'yarım yağlı', 'yağsız', 'light', 'laktozsuz',
-      'konserve', 'dondurulmuş', 'kuru', 'taze', 'haşlanmış', 
-      'köy', 'gezen tavuk', 'organik', 'doğal',
-      'boncuk', 'burgu', 'fiyonk', 'spaghetti', 'kelebek', 'arpa', 'tel', 'yıldız',
-      'tane', 'bütün', 'kıyılmış', 'rendelenmiş', 'dilimli', 'yaprak',
-      'aromalı', 'orman meyveli', 'kakaolu', 'çilekli', 'muzlu' // Meyveli sütleri temizlemek/ayırt etmek için
+      'buyuk boy', 'orta boy', 'kucuk boy', 'buyuk', 'orta', 'kucuk',
+      'baldo', 'osmancik', 'yasmin', 'basmati', 
+      'suzme', 'tam yagli', 'yarim yagli', 'yagsiz', 'light', 'laktozsuz',
+      'konserve', 'dondurulmus', 'kuru', 'taze', 'haslanmis', 'dogranmis', 'dilimlenmis', 'rendelenmis',
+      'koy', 'gezen tavuk', 'organik', 'dogal', 'yerli', 'ithal',
+      'boncuk', 'burgu', 'fiyonk', 'spaghetti', 'kelebek', 'arpa', 'tel', 'yildiz',
+      'tane', 'butun', 'kiyilmis', 'dilimli', 'yaprak',
+      'aromali', 'orman meyveli', 'kakaolu', 'cilekli', 'muzlu'
     ];
     for (var adj in adjectivesToRemove) {
       processed = processed.replaceAll(adj, '');
     }
 
-    return processed.trim();
+    // Fazla boşlukları temizle
+    return processed.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  // --- TÜRKÇE KARAKTER DÜZELTİCİ (YENİ) ---
+  String _normalize(String text) {
+    return text.toLowerCase()
+      .replaceAll('İ', 'i').replaceAll('I', 'i').replaceAll('ı', 'i')
+      .replaceAll('ğ', 'g').replaceAll('Ğ', 'g')
+      .replaceAll('ü', 'u').replaceAll('Ü', 'u')
+      .replaceAll('ş', 's').replaceAll('Ş', 's')
+      .replaceAll('ö', 'o').replaceAll('Ö', 'o')
+      .replaceAll('ç', 'c').replaceAll('Ç', 'c')
+      // Noktalama işaretlerini de temizle
+      .replaceAll(RegExp(r'[^\w\s]'), ''); 
   }
 
   String _capitalize(String s) {

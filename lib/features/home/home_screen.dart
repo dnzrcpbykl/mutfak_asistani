@@ -290,7 +290,11 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                  if (item.pieceCount > 0) {
                    double singlePackageSize = item.quantity / item.pieceCount;
                    if ((val - singlePackageSize).abs() < 0.1) {
-                      if (isIncrement) newPieceCount++; else newPieceCount--;
+                      if (isIncrement) {
+                        newPieceCount++;
+                      } else {
+                        newPieceCount--;
+                      }
                    }
                  }
                  if (newQuantity <= 0) {
@@ -315,13 +319,24 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
   void _showEditDialog(PantryItem item) {
     final nameController = TextEditingController(text: item.ingredientName);
     final quantityController = TextEditingController(text: _formatQuantity(item.quantity));
-    final unitController = TextEditingController(text: item.unit);
     final pieceCountController = TextEditingController(text: item.pieceCount.toString());
+    
+    // 1. Standart Birim Listesi
+    final List<String> unitList = [
+      'adet', 'kg', 'gr', 'lt', 'ml', 'paket', 'kutu', 'kavanoz', 'bardak', 'demet', 'dilim'
+    ];
+
+    // 2. Seçili Birim Mantığı
+    // Eğer kullanıcının mevcut birimi listede yoksa (eski kayıtlar), listeye geçici olarak ekle ki hata vermesin.
+    String selectedUnit = item.unit;
+    if (!unitList.contains(selectedUnit)) {
+      unitList.add(selectedUnit); 
+    }
+
     DateTime? tempDate = item.expirationDate;
     
     // Normalize edilmiş kategori ile başlat
     String selectedCategory = _normalizeCategory(item.category);
-    // Eğer listede yoksa 'Diğer'e düşür
     if (!_categories.contains(selectedCategory)) selectedCategory = "Diğer";
 
     showDialog(
@@ -337,18 +352,64 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 children: [
                   TextField(controller: nameController, decoration: const InputDecoration(labelText: "Ürün Adı")),
                   const SizedBox(height: 10),
+                  
+                  // --- MİKTAR ve BİRİM SATIRI (GÜNCELLENDİ) ---
                   Row(
                     children: [
-                      Expanded(child: TextField(controller: quantityController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: "Toplam Miktar"))),
+                      Expanded(
+                        flex: 2, // Miktar alanı biraz daha geniş olsun
+                        child: TextField(
+                          controller: quantityController, 
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+                          decoration: const InputDecoration(
+                            labelText: "TOPLAM Miktar", 
+                            hintText: "Örn: 1.5",
+                          )
+                        )
+                      ),
                       const SizedBox(width: 10),
-                      Expanded(child: TextField(controller: unitController, decoration: const InputDecoration(labelText: "Birim"))),
+                      
+                      // BİRİM SEÇİMİ (DROPDOWN)
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: selectedUnit,
+                          decoration: const InputDecoration(
+                            labelText: "Birim", // Parantez içini sildik
+                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+                            border: OutlineInputBorder(),
+                          ),
+                          items: unitList.map((String unit) {
+                            return DropdownMenuItem(
+                              value: unit, 
+                              child: Text(unit, style: const TextStyle(fontSize: 14))
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() => selectedUnit = val);
+                            }
+                          },
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  TextField(controller: pieceCountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Kaç Paket? (Opsiyonel)")),
+                  // ---------------------------------------------
+
                   const SizedBox(height: 10),
                   
-                  // DROPDOWN (YENİ KATEGORİLER)
+                  TextField(
+                    controller: pieceCountController, 
+                    keyboardType: TextInputType.number, 
+                    decoration: const InputDecoration(
+                      labelText: "Paket Sayısı (Opsiyonel)",
+                      helperText: "Bu ürün kaç parça/paket?",
+                      hintText: "1"
+                    )
+                  ),
+                  const SizedBox(height: 10),
+                  
+                  // KATEGORİ SEÇİMİ
                   DropdownButtonFormField<String>(
                     value: selectedCategory,
                     decoration: const InputDecoration(labelText: "Kategori"),
@@ -356,7 +417,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                       return DropdownMenuItem(value: category, child: Text(category, style: const TextStyle(fontSize: 14)));
                     }).toList(),
                     onChanged: (val) => setDialogState(() => selectedCategory = val ?? "Diğer"),
-                    isExpanded: true, // Uzun isimlerin taşmaması için
+                    isExpanded: true, 
                   ),
                   
                   const SizedBox(height: 10),
@@ -383,7 +444,6 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 onPressed: () async {
                   final newName = nameController.text.trim();
                   final newQty = double.tryParse(quantityController.text.replaceAll(',', '.')) ?? item.quantity;
-                  final newUnit = unitController.text.trim();
                   final newPiece = int.tryParse(pieceCountController.text) ?? 1; 
 
                   if (newName.isNotEmpty && newQty > 0) {
@@ -391,9 +451,9 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                       itemId: item.id,
                       name: newName,
                       quantity: newQty,
-                      unit: newUnit,
+                      unit: selectedUnit, // TextController yerine değişkenden alıyoruz
                       expirationDate: tempDate,
-                      category: selectedCategory, // Yeni kategori kaydedilir
+                      category: selectedCategory, 
                       pieceCount: newPiece, 
                     );
                     if (mounted) Navigator.pop(context);
@@ -512,11 +572,11 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     final expirationColor = _getExpirationColor(item.expirationDate);
     String quantityText = "";
     if (item.pieceCount > 1) {
-      double singleSize = item.quantity / item.pieceCount;
-      quantityText = "${item.pieceCount} x ${_formatQuantity(singleSize)} ${item.unit}";
-    } else {
-      quantityText = "${_formatQuantity(item.quantity)} ${item.unit}";
-    }
+  // Örn: 3 Paket (Toplam 1.5 kg)
+  quantityText = "${item.pieceCount} Paket (Top: ${_formatQuantity(item.quantity)} ${item.unit})";
+} else {
+  quantityText = "${_formatQuantity(item.quantity)} ${item.unit}";
+}
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
