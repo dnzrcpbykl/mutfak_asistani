@@ -144,14 +144,69 @@ class MarketService {
     return results;
   }
 
-  // --- 5. EKSİK MALZEMELER İÇİN EN UYGUN ÜRÜNLERİ GETİR ---
+  // --- TÜRKÇE KARAKTER DUYARLI KÜÇÜLTME ---
+  String _toTrLowerCase(String text) {
+    return text
+        .replaceAll('İ', 'i').replaceAll('I', 'ı')
+        .replaceAll('Ğ', 'ğ').replaceAll('Ü', 'ü')
+        .replaceAll('Ş', 'ş').replaceAll('Ö', 'ö')
+        .replaceAll('Ç', 'ç').toLowerCase();
+  }
+
+  // --- 5. EKSİK MALZEMELER İÇİN EN UYGUN ÜRÜNLERİ GETİR (SABUNSUZ!) ---
   List<MarketPrice> findMatchingProducts(List<String> missingIngredients, List<MarketPrice> allPrices) {
+    
+    // 1. YASAKLI KATEGORİLER (Kesinlikle Yemek Değil)
+    final List<String> bannedCategories = [
+      "Temizlik ve Kişisel Bakım Ürünleri",
+      "Temizlik", "Kişisel Bakım", "Bebek Bezi ve Mendil", 
+      "Kağıt Ürünleri", "Ev Gereçleri", "Kozmetik"
+    ];
+
+    // 2. YASAKLI KELİMELER (Sıvı sabun vb.)
+    final List<String> bannedKeywords = [
+      "sıvı sabun", "katı sabun", "duş jeli", "şampuan", "deterjan", 
+      "yumuşatıcı", "krem", "bezi", "mendil", "temizleyici", 
+      "bulaşık", "çamaşır", "parlatıcı", "yüzey", "jel"
+    ];
+
     List<MarketPrice> foundProducts = [];
 
     for (var rawIngredientName in missingIngredients) {
-      String searchKey = _cleanIngredientName(rawIngredientName);
+      String searchKey = _cleanIngredientName(rawIngredientName); // Örn: "zeytinyağı"
+      String searchKeyLower = _toTrLowerCase(searchKey);
       
-      MarketPrice? bestProductMatch = _findBestProductWithScore(searchKey, allPrices);
+      // "YAĞ" ARANIYORSA ÖZEL FİLTRE
+      bool isOilSearch = searchKeyLower.contains("yag") || searchKeyLower.contains("yağ");
+
+      // Tüm ürünler içinde filtreleme yap
+      List<MarketPrice> candidates = allPrices.where((p) {
+        // A) Kategori Kontrolü
+        if (bannedCategories.contains(p.category)) return false;
+        
+        String titleLower = _toTrLowerCase(p.title);
+
+        // B) Yasaklı Kelime Kontrolü (Sabun var mı?)
+        if (bannedKeywords.any((ban) => titleLower.contains(ban))) return false;
+
+        // C) Yağ Kontrolü (Peynir, Süt, Yoğurt içindeki yağı ele)
+        if (isOilSearch) {
+           if (titleLower.contains("peynir") || 
+               titleLower.contains("süt") || 
+               titleLower.contains("yoğurt") || 
+               titleLower.contains("yogurt") || 
+               titleLower.contains("krema") ||
+               titleLower.contains("ton") || 
+               titleLower.contains("cips") ||
+               titleLower.contains("sos")) {
+             return false;
+           }
+        }
+        return true;
+      }).toList();
+
+      // Filtrelenmiş güvenli liste üzerinden en iyi eşleşmeyi bul
+      MarketPrice? bestProductMatch = _findBestProductWithScore(searchKey, candidates);
 
       if (bestProductMatch != null) {
         foundProducts.add(bestProductMatch);

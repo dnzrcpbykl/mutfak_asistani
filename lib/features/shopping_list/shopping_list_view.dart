@@ -563,8 +563,14 @@ class _ProductSearchSheetState extends State<ProductSearchSheet> {
             padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
-              autofocus: true,
+              // autofocus: false yapalım, bazen klavye açılırken sorun çıkarabiliyor
+              autofocus: false, 
+              
+              // Standart metin girişi
+              keyboardType: TextInputType.text,
+              textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.search,
+              
               decoration: InputDecoration(
                 hintText: "Ürün ara (Örn: Süt, Yağ)",
                 prefixIcon: const Icon(Icons.search),
