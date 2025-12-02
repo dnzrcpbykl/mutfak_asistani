@@ -72,12 +72,15 @@ class RecipeService {
   // --- GÜÇLENDİRİLMİŞ EŞLEŞTİRME MOTORU ---
   List<Map<String, dynamic>> matchRecipes(List<PantryItem> pantryItems, List<Recipe> allRecipes) {
     
-    // Kilerdeki ürünleri "Normalize" ederek listeye al (soğan -> sogan)
+    // Kilerdeki ürünleri "Normalize" ederek listeye al
     final Set<String> myIngredients = {};
     for (var item in pantryItems) {
+      // DÜZELTME: Sadece stoğu olan (0'dan büyük) ürünleri dikkate al!
+      if (item.quantity <= 0.01) continue; 
+
       // Hem normal halini hem de temizlenmiş halini havuza at
       myIngredients.add(_cleanName(item.ingredientName));
-      // Parçalayıp kelime kelime de ekle (Örn: "Kuru Soğan" -> "kuru", "sogan")
+      // Parçalayıp kelime kelime de ekle
       myIngredients.addAll(_cleanName(item.ingredientName).split(' '));
     }
 

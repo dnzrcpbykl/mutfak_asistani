@@ -58,41 +58,46 @@ class OCRService {
       
       final headers = {'Content-Type': 'application/json'};
 
-      // --- İSTEM (PROMPT) ---
+      // --- MASTER SEVİYE OCR PROMPT ---
       const prompt = '''
-      Bu market fişini analiz et ve aşağıdaki katı kurallara göre JSON formatında döndür.
-
+      Bu market fişini analiz et ve aşağıdaki JSON formatında döndür.
+      
       GÖREV 1: MARKET TESPİTİ
-      "BIM", "A101", "SOK", "MIGROS", "CARREFOURSA" veya "DIGER".
+      "BIM", "A101", "SOK", "MIGROS", "CARREFOURSA" "TARIM KREDİ KOOP" veya "DIGER".
 
-      GÖREV 2: SADECE GIDA ÜRÜNLERİNİ AYIKLA
-      Listeye SADECE insanın yiyip içebileceği GIDA ürünlerini al.
-      ❌ Temizlik, Kişisel Bakım, Kağıt Ürünleri, Mutfak Gereçleri, Hayvan Mamaları, Poşet, İndirim, KDV satırlarını KESİNLİKLE GÖRMEZDEN GEL.
+      GÖREV 2: ÜRÜN AYIKLAMA (SADECE GIDA)
+      Temizlik, poşet, bakım ürünleri, indirim satırlarını atla.
 
-      GÖREV 3: MİKTAR VE BİRİM ANALİZİ
-      Fişte yazan miktarları ve birimleri şu mantıkla dönüştür:
-      A) ÇOKLU PAKETLERİ AÇ: "4x1L Süt" -> amount: 4, unit: "adet", product_name: "Süt (1L)".
-      B) BOYUTU MİKTAR SANMA: "PİRİNÇ 2.5KG" -> amount: 1, unit: "adet", product_name: "Pirinç (2.5kg)".
-      C) ADETLİ ÜRÜNLER: "2 AD X 15.00" -> amount: 2.
+      GÖREV 3: MİKTAR VE BİRİM ANALİZİ (KRİTİK)
+      
+      A) TARTILI ÜRÜNLER (Manav/Kasap - ALT SATIRA BAK):
+         Fişlerde tartılı ürünlerin miktarı genelde ÜRÜN ADININ ALTINDAKİ satırda "0.355 KG x 100 TL" formatında yazar.
+         - Satır 1: "MUZ ITHAL KG"
+         - Satır 2: "0.595 KG x 25.95 TL"
+         -> SONUÇ: amount: 0.595, unit: "kg", product_name: "Muz İthal"
+         
+      B) STANDART ÜRÜNLER:
+         - "AYÇİÇEK YAĞI 5 L" -> amount: 5, unit: "lt"
+         - "EKMEK" -> amount: 1, unit: "adet"
+         - "MAKARNA 500GR" -> amount: 500, unit: "gr" (Eğer 0.5 KG yazıyorsa 0.5 kg olarak al)
 
-      GÖREV 4: FİŞ TARİHİ TESPİTİ (ÇOK ÖNEMLİ)
-      Fişin üzerinde yazan alışveriş tarihini bul.
-      - Tarihi "YYYY-MM-DD" formatına çevir (Örn: 2025-11-29).
-      - Eğer tarih okunamazsa bugünün tarihini ver.
+      **KURAL:** Miktarları yuvarlama! 0.355 ise aynen 0.355 olarak yaz.
 
-      VERİ FORMATI (JSON):
+      GÖREV 4: TARİH
+      "YYYY-MM-DD" formatında.
+
+      JSON FORMATI:
       {
-        "market_name": "MARKET ADI",
-        "date": "YYYY-MM-DD",
+        "market_name": "MIGROS",
+        "date": "2025-11-18",
         "items": [
           {
-            "product_name": "Ürün Adı",
-            "brand": "Marka",
-            "price": 10.50,
-            "amount": 1,
-            "unit": "adet",
-            "category": "Temel Gıda",
-            "days_to_expire": 7
+            "product_name": "Muz İthal",
+            "brand": "",
+            "price": 15.44,
+            "amount": 0.595, 
+            "unit": "kg",
+            "category": "Meyve ve Sebze"
           }
         ]
       }

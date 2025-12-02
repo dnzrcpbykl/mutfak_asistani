@@ -170,58 +170,76 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     return const Color(0xFF69F0AE);
   }
 
-  // --- GÜNCELLENEN KATEGORİ EŞLEŞTİRİCİ ---
-  String _normalizeCategory(String dbCategory) {
-    final cat = dbCategory.toLowerCase(); 
+  // --- GÜNCELLENEN KATEGORİ EŞLEŞTİRİCİ (GENİŞLETİLMİŞ VERSİYON) ---
+  String _normalizeCategory(String text) {
+    final cat = text.toLowerCase();
 
-    // 1. Et & Balık (GÜÇLENDİRİLDİ)
-    // "şarküteri", "salam", "sosis", "kıyma", "köfte" gibi kelimeler eklendi.
+    // 1. Et & Balık
     if (cat.contains("et") || cat.contains("tavuk") || cat.contains("balık") || 
         cat.contains("şarküteri") || cat.contains("salam") || cat.contains("sosis") || 
         cat.contains("sucuk") || cat.contains("kıyma") || cat.contains("köfte") ||
-        cat.contains("kasap")) {
+        cat.contains("kasap") || cat.contains("bonfile") || cat.contains("kuşbaşı")) {
       return "Et, Tavuk ve Balık";
     }
 
-    // 2. Süt & Kahvaltılık (GÜÇLENDİRİLDİ)
-    // "yumurta", "peynir", "kaymak", "tereyağ" zaten vardı ama emin olalım.
+    // 2. Süt & Kahvaltılık (Bal, Reçel, Zeytin eklendi)
     if (cat.contains("süt") || cat.contains("peynir") || cat.contains("yoğurt") || 
         cat.contains("kahvaltı") || cat.contains("yumurta") || cat.contains("tereyağ") ||
-        cat.contains("margarin") || cat.contains("kaymak") || cat.contains("zeytin")) {
+        cat.contains("margarin") || cat.contains("kaymak") || cat.contains("zeytin") ||
+        cat.contains("bal") || cat.contains("reçel") || cat.contains("helva") ||
+        cat.contains("tahin") || cat.contains("pekmez") || cat.contains("labne")) {
       return "Süt Ürünleri ve Kahvaltılık";
     }
 
     // 3. Meyve & Sebze
-    if (cat.contains("meyve") || cat.contains("sebze") || cat.contains("yeşillik") || cat.contains("patates") || cat.contains("soğan")) {
+    if (cat.contains("meyve") || cat.contains("sebze") || cat.contains("yeşillik") || 
+        cat.contains("patates") || cat.contains("soğan") || cat.contains("sarımsak") ||
+        cat.contains("limon") || cat.contains("domates") || cat.contains("biber")) {
       return "Meyve ve Sebze";
     }
 
-    // 4. Temel Gıda
+    // 4. Temel Gıda (Mantı, Ekmek, Hamur, Konserve eklendi)
     if (cat.contains("bakliyat") || cat.contains("makarna") || cat.contains("un") || 
         cat.contains("yağ") || cat.contains("baharat") || cat.contains("sos") || 
         cat.contains("temel") || cat.contains("pirinç") || cat.contains("bulgur") ||
-        cat.contains("salça") || cat.contains("şeker") || cat.contains("tuz")) {
+        cat.contains("salça") || cat.contains("şeker") || cat.contains("tuz") ||
+        // YENİ EKLENENLER:
+        cat.contains("ekmek") || cat.contains("mantı") || cat.contains("yufka") ||
+        cat.contains("hamur") || cat.contains("maya") || cat.contains("galeta") ||
+        cat.contains("sirke") || cat.contains("konserve") || cat.contains("turşu") ||
+        cat.contains("bulyon") || cat.contains("irmik")) {
       return "Temel Gıda";
     }
 
     // 5. İçecek
-    if (cat.contains("içecek") || cat.contains("su") || cat.contains("kahve") || cat.contains("çay") || cat.contains("kola") || cat.contains("gazoz") || cat.contains("meyve suyu")) {
+    if (cat.contains("içecek") || cat.contains("su") || cat.contains("kahve") || 
+        cat.contains("çay") || cat.contains("kola") || cat.contains("gazoz") || 
+        cat.contains("meyve suyu") || cat.contains("soda") || cat.contains("ayran") ||
+        cat.contains("kefir") || cat.contains("şalgam")) {
       return "İçecek";
     }
 
-    // 6. Atıştırmalık
+    // 6. Atıştırmalık (Pizza, Hamburger, Dondurma eklendi)
     if (cat.contains("atıştırmalık") || cat.contains("çikolata") || cat.contains("bisküvi") || 
-        cat.contains("cips") || cat.contains("tatlı") || cat.contains("kek") || cat.contains("gofret") || cat.contains("kuruyemiş")) {
+        cat.contains("cips") || cat.contains("tatlı") || cat.contains("kek") || 
+        cat.contains("gofret") || cat.contains("kuruyemiş") || 
+        // YENİ EKLENENLER:
+        cat.contains("pizza") || cat.contains("hamburger") || cat.contains("dondurma") ||
+        cat.contains("nugget") || cat.contains("şnitzel") || cat.contains("tost") ||
+        cat.contains("gevrek") || cat.contains("kraker") || cat.contains("bar")) {
       return "Atıştırmalık ve Tatlı";
     }
 
     // 7. Temizlik
     if (cat.contains("temizlik") || cat.contains("bakım") || cat.contains("deterjan") || 
-        cat.contains("kağıt") || cat.contains("kozmetik") || cat.contains("şampuan") || cat.contains("sabun")) {
+        cat.contains("kağıt") || cat.contains("kozmetik") || cat.contains("şampuan") || 
+        cat.contains("sabun") || cat.contains("diş") || cat.contains("bezi") ||
+        cat.contains("jel") || cat.contains("süngeri")) {
       return "Temizlik ve Kişisel Bakım Ürünleri";
     }
 
-    if (_categories.contains(dbCategory)) return dbCategory;
+    // Listede varsa olduğu gibi döndür (Veritabanı kategori ismi ise)
+    if (_categories.contains(text)) return text;
     
     return "Diğer";
   }
@@ -545,8 +563,19 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
 
   Widget _buildCategoryList(String category, List<PantryItem> allItems) {
     final filteredItems = allItems.where((item) {
-      final matchesCategory = category == "Tümü" ? true : _normalizeCategory(item.category) == category;
+      // DÜZELTME: Miktarı 0 olanları listede gösterme
+      if (item.quantity <= 0.001) return false;
+
+      // Eğer kategori 'Diğer' ise veya bilinmiyorsa, ürün ismini kontrol et!
+      String itemCategory = item.category;
+      if (itemCategory == 'Diğer' || itemCategory == 'Genel' || itemCategory.isEmpty) {
+        itemCategory = item.ingredientName; 
+      }
+      
+      final normalizedCat = _normalizeCategory(itemCategory);
+      final matchesCategory = category == "Tümü" ? true : normalizedCat == category;
       final matchesSearch = _searchQuery.isEmpty ? true : item.ingredientName.toLowerCase().replaceAll('ı', 'i').contains(_searchQuery.replaceAll('ı', 'i'));
+      
       return matchesCategory && matchesSearch;
     }).toList();
 
@@ -591,7 +620,15 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 border: Border.all(color: expirationColor.withOpacity(0.5)),
                 color: expirationColor.withOpacity(0.1),
               ),
-              child: Icon(_getCategoryIcon(_normalizeCategory(item.category)), color: expirationColor, size: 24),
+              child: Icon(
+                _getCategoryIcon(_normalizeCategory(
+                  (item.category == 'Diğer' || item.category == 'Genel') 
+                      ? item.ingredientName 
+                      : item.category
+                )), 
+                color: expirationColor, 
+                size: 24
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -599,7 +636,10 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(item.ingredientName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: colorScheme.onSurface)),
-                  if (item.brand != null && item.brand!.isNotEmpty)
+                  // DÜZELTME: "Diğer", "Bilinmiyor" gibi markaları listede gösterme
+                  if (item.brand != null && 
+                      item.brand!.isNotEmpty && 
+                      !['diger', 'diğer', 'bilinmiyor', 'markasız'].contains(item.brand!.toLowerCase()))
                     Text(item.brand!, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
                   Text(quantityText, style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
                 ],

@@ -47,41 +47,56 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
     }).toList();
   }
 
-  // --- BASİT BİRLEŞTİRME (AI GÜVENİLİR OLDUĞU İÇİN) ---
+  // --- MASTER SEVİYE BİRLEŞTİRME VE TEMİZLEME ---
   List<Map<String, dynamic>> _mergeItemsSimple(List<dynamic> rawList) {
     List<Map<String, dynamic>> mergedList = [];
+    
+    // YASAKLI MARKA LİSTESİ
+    final List<String> ignoredBrands = ['diger', 'diğer', 'bilinmiyor', 'markasız', 'genel', 'tanımsız'];
+
     for (var item in rawList) {
-      String name = (item['product_name'] ?? '').trim();
+      String rawName = (item['product_name'] ?? '').trim();
       String brand = (item['brand'] ?? '').trim();
+      
+      // 1. İSMİN İÇİNDEKİ MİKTARLARI TEMİZLE (Örn: "Ayçiçek Yağı 5L" -> "Ayçiçek Yağı")
+      // Bu Regex; ismin sonundaki sayıları ve birimleri (5kg, 500gr, 1 lt vb.) siler.
+      String name = rawName.replaceAll(RegExp(r'\s*\d+[.,]?\d*\s*(kg|lt|litre|gr|gram|ml)\s*$', caseSensitive: false), '').trim();
+
+      // 2. Marka Temizliği
+      if (ignoredBrands.contains(brand.toLowerCase())) {
+        brand = ""; 
+      }
+
+      // 3. Markayı İsme Ekle (Eğer isimde zaten yoksa)
+      if (brand.isNotEmpty && !name.toLowerCase().contains(brand.toLowerCase())) {
+        name = "$brand $name";
+      }
+      
+      // Baş harfleri büyüt
+      name = toTitleCase(name);
+
       double amount = (item['amount'] as num).toDouble();
       String unit = (item['unit'] ?? 'adet').toString().toLowerCase();
       double price = (item['price'] as num?)?.toDouble() ?? 0.0;
 
-      // Markayı isme ekleyelim (Eğer isimde yoksa)
-      if (brand.isNotEmpty && !name.toLowerCase().contains(brand.toLowerCase())) {
-        name = "$brand $name";
-      }
-      // Baş harfleri büyüt
-      name = toTitleCase(name);
-
-      // LİSTEDE VAR MI?
+      // LİSTEDE VAR MI? (Aynı isim ve birimle)
       int existingIndex = mergedList.indexWhere((element) => 
           element['product_name'] == name && 
           element['unit'] == unit
       );
 
       if (existingIndex != -1) {
-        // VARSA ÜSTÜNE EKLE
+        // VARSA ÜSTÜNE EKLE (Örn: 2 tane 1 Litrelik süt varsa -> 2 Litre Süt olur)
         mergedList[existingIndex]['amount'] += amount;
         mergedList[existingIndex]['price'] += price;
       } else {
         // YOKSA YENİ EKLE
         var newItem = Map<String, dynamic>.from(item);
         newItem['product_name'] = name;
+        newItem['brand'] = brand;
         newItem['amount'] = amount;
         newItem['unit'] = unit;
-        newItem['pieceCount'] = 1; 
-        // Paket mantığı artık AI tarafından "1" olarak geliyor (Boyut isme yazıldı)
+        newItem['pieceCount'] = 1; // Artık paket sayısını değil, toplam miktarı tutuyoruz
         mergedList.add(newItem);
       }
     }
@@ -140,7 +155,8 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
             quantity: quantityToAdd,
             unit: unit, 
             expirationDate: _expirationDates[i],
-            createdAt: Timestamp.now(),
+            // DÜZELTME: Fiş tarihini harcama tarihi olarak işle
+            createdAt: Timestamp.fromDate(_receiptDate), 
             brand: itemData['brand'],
             marketName: _marketName,
             price: price,
@@ -270,7 +286,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                     ),
                     
                     subtitle: Text(
-                      "${item['amount'].toInt()} ${item['unit']}", // Miktar
+                      "${(item['amount'] as num).toDouble() == (item['amount'] as num).toInt() ? (item['amount'] as num).toInt() : (item['amount'] as num).toString()} ${item['unit']}",
                       style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
                     ),
                     

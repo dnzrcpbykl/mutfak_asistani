@@ -55,7 +55,7 @@ class RecipeImporterService {
 
     final headers = {'Content-Type': 'application/json'};
 
-    // --- GÜNCELLENEN PROMPT: BESİN DEĞERLERİ EKLENDİ ---
+    // --- GÜNCELLENEN PROMPT: SPESİFİK MALZEME KURALI EKLENDİ ---
     final prompt = '''
       Sen Türk mutfağına hakim, teknik detaylara önem veren profesyonel bir şefsin ve aynı zamanda diyetisyensin.
       Elimdeki malzemeler: [$ingredientsText]
@@ -72,6 +72,13 @@ class RecipeImporterService {
       3. **MARKA YOK:** Marka adı kullanma.
       4. **BESİN DEĞERLERİ (ZORUNLU):** Her bir tarif için 1 porsiyonluk tahmini Kalori (kcal), Protein (g), Karbonhidrat (g) ve Yağ (g) değerlerini hesapla ve JSON'a ekle.
       
+      5. **SPESİFİK OL (ÇOK ÖNEMLİ):** Malzeme isimlerinde asla genel kategori ismi kullanma.
+         - "Sıvı yağ" DEME -> "Ayçiçek yağı" veya "Zeytinyağı" olarak belirt.
+         - "Peynir" DEME -> "Kaşar Peyniri", "Beyaz Peynir" veya "Lor Peyniri" olarak belirt.
+         - "Un" DEME -> "Beyaz Un", "Tam Buğday Unu" veya "Galeta Unu" olarak belirt.
+         - "Biber" DEME -> "Yeşil Biber", "Kapya Biber" veya "Dolmalık Biber" olarak belirt.
+         Bu kural, market alışveriş listesi oluştururken doğru ürünü bulmamız için kritiktir.
+
       İSTENEN JSON FORMATI (Sadece bu JSON'u döndür, yorum yapma):
       [
         {

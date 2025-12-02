@@ -468,6 +468,10 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
   Widget _buildRecipeCard(BuildContext context, dynamic item, List<MarketPrice> allPrices) {
     final Recipe recipe = item['recipe'];
+    // --- YENİ EKLENEN: TAMAMLANDI KONTROLÜ ---
+    final isCompleted = Provider.of<RecipeProvider>(context).isRecipeCompleted(recipe.name);
+    // ------------------------------------------
+    
     final double matchPercent = item['matchPercentage'];
     final List<String> missing = item['missingIngredients'];
     final List<String> subTips = item['substitutionTips'] ?? [];
@@ -476,39 +480,53 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // --- FİYAT HESAPLAMA EKLENDİ ---
+    // --- FİYAT HESAPLAMA ---
     double missingCost = 0;
     if (missing.isNotEmpty) {
       missingCost = _marketService.calculateMissingCost(missing, allPrices);
     }
-    // --------------------------------
+    // -----------------------
 
     Color statusColor = matchPercent == 1.0 
         ? const Color(0xFF00E676) 
         : (matchPercent > 0.5 ? const Color(0xFFFFAB40) : const Color(0xFFFF5252));
 
     return Card(
+      // TAMAMLANDIYSA YEŞİLİMTRAK YAP
+      color: isCompleted ? Colors.green.withOpacity(0.1) : null,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ExpansionTile(
         iconColor: colorScheme.onSurface.withOpacity(0.7),
         collapsedIconColor: colorScheme.onSurface.withOpacity(0.7),
-        leading: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: statusColor, width: 2),
-            color: theme.cardTheme.color,
-            boxShadow: isDark ? [BoxShadow(color: statusColor.withOpacity(0.2), blurRadius: 10)] : [],
-          ),
-          child: Center(
-            child: Text(
-              "%${(matchPercent * 100).toInt()}",
-              style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 13),
-            ),
-          ),
+        leading: isCompleted 
+            // TAMAMLANDI İKONU
+            ? const Icon(Icons.check_circle, color: Colors.green, size: 40)
+            // YÜZDE YUVARLAĞI (ESKİ)
+            : Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: statusColor, width: 2),
+                  color: theme.cardTheme.color,
+                  boxShadow: isDark ? [BoxShadow(color: statusColor.withOpacity(0.2), blurRadius: 10)] : [],
+                ),
+                child: Center(
+                  child: Text(
+                    "%${(matchPercent * 100).toInt()}",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: statusColor, fontSize: 13),
+                  ),
+                ),
+              ),
+        title: Text(
+          recipe.name, 
+          style: TextStyle(
+            fontWeight: FontWeight.bold, 
+            color: colorScheme.onSurface,
+            // TAMAMLANDIYSA ÇİZ
+            decoration: isCompleted ? TextDecoration.lineThrough : null,
+          )
         ),
-        title: Text(recipe.name, style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -545,7 +563,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     style: TextStyle(color: statusColor)
                   ),
             
-            // --- FİYAT GÖSTERİMİ (BU KISIM EKLENDİ) ---
+            // --- FİYAT GÖSTERİMİ ---
             if (missing.isNotEmpty && missingCost > 0)
                Padding(
                  padding: const EdgeInsets.only(top: 4.0),
@@ -557,7 +575,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                    ],
                  ),
                ),
-            // ------------------------------------------
+            // -----------------------
           ],
         ),
         children: [
@@ -684,7 +702,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                             label: const Text("Listeye Ekle"),
                             style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent)),
                             
-                            // --- AKILLI LİSTE EKLEME (BURASI GÜNCELLENDİ) ---
+                            // --- AKILLI LİSTE EKLEME ---
                             onPressed: () async {
                               // 1. Ürünleri Bul (Resimli, Fiyatlı)
                               List<MarketPrice> productsToAdd = _marketService.findMatchingProducts(missing, allPrices);
@@ -805,8 +823,12 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               // Yükleniyor göster
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncelleniyor...")));
               
+              // YENİ: Tarif tamamlandı olarak işaretle
+              Provider.of<RecipeProvider>(context, listen: false).markRecipeAsCompleted(recipe.name);
+
               // Akıllı düşüm işlemini başlat
               final logs = await _pantryService.consumeIngredientsSmart(recipe.ingredients);
+              
               
               // Listeyi yenile
               if (mounted) {

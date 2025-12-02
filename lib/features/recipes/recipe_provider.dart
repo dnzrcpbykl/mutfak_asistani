@@ -13,6 +13,14 @@ class RecipeProvider extends ChangeNotifier {
   final RecipeService _recipeService = RecipeService();
   final MarketService _marketService = MarketService();
   final PantryService _pantryService = PantryService();
+  final Set<String> _completedRecipeNames = {};
+
+  bool isRecipeCompleted(String name) => _completedRecipeNames.contains(name);
+
+  void markRecipeAsCompleted(String name) {
+    _completedRecipeNames.add(name);
+    notifyListeners();
+  }
 
   List<Recipe> _allRecipes = [];
   List<MarketPrice> _allPrices = []; // Tipi güncelledik

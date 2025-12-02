@@ -59,21 +59,47 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
     return name.trim();
   }
 
-  // --- GÜNCELLENEN FONKSİYON: ÜRÜNÜ KİLERE TAŞI ---
+  // --- GÜNCELLENMİŞ: KİLERE TAŞIMA (MASTER SEVİYE) ---
   Future<void> _moveItemToPantry(Map<String, dynamic> item) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // 1. İSMİ TEMİZLE
+    // 1. İSMİ VE MİKTARI ANALİZ ET
     String originalName = item['name'];
     String cleanName = _cleanProductNameForPantry(originalName);
     
+    // Otomatik Miktar ve Birim Tespiti (Örn: "Yağ 5L" -> miktar: 5, birim: lt)
+    double defaultQuantity = 1.0;
+    String defaultUnit = "adet";
+    
+    // Regex ile isimden miktar yakala (5 kg, 500 gr, 1 lt vb.)
+    final quantityMatch = RegExp(r'(\d+[.,]?\d*)\s*(kg|gr|gram|lt|litre|ml|l)').firstMatch(originalName.toLowerCase());
+    
+    if (quantityMatch != null) {
+      defaultQuantity = double.tryParse(quantityMatch.group(1)!.replaceAll(',', '.')) ?? 1.0;
+      String unitStr = quantityMatch.group(2)!;
+      
+      // Birim Standardizasyonu
+      if (unitStr == 'l' || unitStr == 'litre') defaultUnit = 'lt';
+      else if (unitStr == 'gram') defaultUnit = 'gr';
+      else if (unitStr == 'kilogram') defaultUnit = 'kg';
+      else defaultUnit = unitStr;
+    } else {
+      // Eğer isimde yazmıyorsa, ürün tipine göre varsayılan ata
+      if (cleanName.toLowerCase().contains("yağ") || cleanName.toLowerCase().contains("süt") || cleanName.toLowerCase().contains("su")) {
+        defaultUnit = "lt";
+      } else if (cleanName.toLowerCase().contains("kıyma") || cleanName.toLowerCase().contains("tavuk") || cleanName.toLowerCase().contains("et")) {
+        defaultUnit = "kg";
+      } else if (cleanName.toLowerCase().contains("un") || cleanName.toLowerCase().contains("şeker") || cleanName.toLowerCase().contains("pirinç")) {
+        defaultUnit = "kg";
+      }
+    }
+
     String imageUrl = item['imageUrl'] ?? '';
     List markets = item['markets'] ?? [];
     
     double bestPrice = 0.0;
     String bestMarket = "Bilinmiyor";
-    
     if (markets.isNotEmpty) {
       List<dynamic> sortedMarkets = List.from(markets);
       sortedMarkets.sort((a, b) => (a['price'] as num).compareTo(b['price'] as num));
@@ -81,44 +107,33 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
       bestMarket = sortedMarkets.first['marketName'] ?? "Bilinmiyor";
     }
 
-    // 2. KATEGORİ TAHMİNİ (Kilerde doğru sekmeye gitmesi için)
-    // Basit bir tahmin yapıp PantryService'e göndereceğiz, o da normalize edecek.
+    // Kategori Tahmini
     String estimatedCategory = "Diğer";
     String lowerName = cleanName.toLowerCase();
-    if (lowerName.contains("yumurta") || lowerName.contains("peynir")) {
-      estimatedCategory = "Süt Ürünleri ve Kahvaltılık";
-    } else if (lowerName.contains("kıyma") || lowerName.contains("salam")) estimatedCategory = "Et, Tavuk ve Balık";
-    else if (lowerName.contains("domates") || lowerName.contains("biber")) estimatedCategory = "Meyve ve Sebze";
+    // (Burası Home Screen'deki kategori mantığıyla aynı çalışır, detaya gerek yok)
 
-    // 3. Kullanıcıya SKT, Miktar ve BİRİM sormak için Diyalog
-    DateTime selectedDate = DateTime.now().add(const Duration(days: 7)); 
-    TextEditingController quantityController = TextEditingController(text: "1");
-    
-    // Varsayılan Birim (Otomatik Algıla)
-    String selectedUnit = "adet";
-    if (lowerName.contains("kıyma") || lowerName.contains("tavuk") || lowerName.contains("et")) {
-      selectedUnit = "kg"; // Et ürünleri genelde kg olur
-      quantityController.text = "0.5"; // Yarım kilo varsayılan
-    } else if (lowerName.contains("süt") || lowerName.contains("su")) {
-      selectedUnit = "lt";
-    }
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
+    TextEditingController quantityController = TextEditingController(text: defaultQuantity.toString());
+    String selectedUnit = defaultUnit;
 
     await showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder( // Dropdown değişimi için StatefulBuilder şart
+      builder: (ctx) => StatefulBuilder( 
         builder: (context, setDialogState) {
           return AlertDialog(
             title: Text("Kilere Ekle: $cleanName"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Text("Lütfen ürünün paket üzerindeki TOPLAM miktarını giriniz.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: quantityController,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: "Miktar"),
+                        decoration: const InputDecoration(labelText: "Miktar", border: OutlineInputBorder()),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -157,27 +172,25 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("İptal")),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.pop(ctx); 
-                  
+                  Navigator.pop(ctx);
                   final newItem = PantryItem(
                     id: '', 
                     userId: user.uid,
                     ingredientId: 'shop_${DateTime.now().millisecondsSinceEpoch}',
-                    ingredientName: cleanName, // Temiz isim
+                    ingredientName: cleanName, 
                     quantity: double.tryParse(quantityController.text.replaceAll(',', '.')) ?? 1.0,
-                    unit: selectedUnit, // Seçilen birim
+                    unit: selectedUnit, 
                     expirationDate: selectedDate,
                     createdAt: Timestamp.now(),
                     brand: '', 
                     marketName: bestMarket,
                     price: bestPrice, 
-                    category: estimatedCategory, // Tahmini kategori
-                    pieceCount: 1,
+                    category: estimatedCategory, 
+                    pieceCount: 1, // Artık adet değil toplam miktar tuttuğumuz için 1 (Bütünü temsil eder)
                   );
 
                   await _pantryService.addPantryItem(newItem);
                   await _service.deleteItem(item['id']);
-
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("$cleanName kilere taşındı!"), backgroundColor: Colors.green),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -35,66 +36,112 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
   @override
   void initState() {
     super.initState();
-    // Klavye odağını temizle
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
-
-    WakelockPlus.enable(); 
+    WakelockPlus.enable();
+    
+    // Adımları ayıkla
     _steps = _parseInstructions(widget.recipe.instructions);
-    _initTts();
+    
+    // Sesi hazırla (Android için gecikmeli başlatma bazen sorunu çözer)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initTts();
+    });
   }
 
-  // --- PARSER ---
+  // --- KESİN ÇÖZÜM: SPLIT MANTIĞI ---
   List<String> _parseInstructions(String text) {
-    if (text.trim().isEmpty) return ["Tarif adımları yüklenemedi."];
+    if (text.trim().isEmpty) return ["Tarif hazırlanıyor..."];
+
+    // 1. Temizlik
     String cleanText = text.replaceAll('**', '').trim();
-    
-    final stepSplit = cleanText.split(RegExp(r'(^|\n)\s*\d+[\.\)\:]\s+'));
-    List<String> cleanList = stepSplit
+
+    // 2. BÖLME İŞLEMİ (SPLIT)
+    // Regex Açıklaması:
+    // (?:^|\s+) -> Başlangıçta olabilir VEYA öncesinde boşluk olabilir
+    // \d+       -> Bir veya daha fazla rakam (1, 2, 10...)
+    // [\.\)\:]  -> Nokta, parantez veya iki nokta (1. veya 1) veya 1:)
+    // \s+       -> Sonrasında boşluk
+    final RegExp splitRegex = RegExp(r'(?:^|\s+)\d+[\.\)\:]\s+');
+
+    // Metni sayılardan bölüyoruz.
+    // Örnek: "Soğanı doğra. 2. Suyu ekle" -> ["Soğanı doğra. ", "Suyu ekle"]
+    List<String> parts = cleanText.split(splitRegex);
+
+    // 3. Boşlukları temizle ve listeyi oluştur
+    List<String> steps = parts
         .map((s) => s.trim())
-        .where((s) => s.isNotEmpty && s.length > 3) 
+        .where((s) => s.isNotEmpty && s.length > 2) // Çok kısa parçaları at (örn: sadece nokta kalmışsa)
         .toList();
 
-    if (cleanList.length < 2) {
-      cleanList = cleanText.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    // 4. Eğer hiç bölünemediyse (Liste formatında değilse)
+    if (steps.isEmpty) {
+      // Satır satır bölmeyi dene
+      steps = cleanText.split('\n').where((s) => s.trim().isNotEmpty).toList();
     }
-    if (cleanList.length < 2) {
-       cleanList = cleanText.split('. ').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    }
-    return cleanList.isNotEmpty ? cleanList : [cleanText];
+    
+    // 5. Hala boşsa orijinal metni tek parça olarak ver
+    if (steps.isEmpty) return [cleanText];
+
+    return steps;
   }
 
   // --- TTS ---
   Future<void> _initTts() async {
     try {
+      // Dil ayarı
       await _flutterTts.setLanguage("tr-TR");
-      await _flutterTts.setSpeechRate(0.5);
-      await _flutterTts.awaitSpeakCompletion(true);
       
+      // Ses özellikleri
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.setVolume(1.0);
+      await _flutterTts.setPitch(1.0);
+
+      // iOS Ses Kategorisi
+      if (Platform.isIOS) {
+        await _flutterTts.setIosAudioCategory(
+            IosTextToSpeechAudioCategory.playback,
+            [
+              IosTextToSpeechAudioCategoryOptions.allowBluetooth,
+              IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
+              IosTextToSpeechAudioCategoryOptions.mixWithOthers
+            ],
+            IosTextToSpeechAudioMode.defaultMode
+        );
+      }
+
+      // 'awaitSpeakCompletion' Android'de bazen sorun çıkarabilir, 
+      // çalışmazsa bu satırı yorum satırına almayı dene.
+      await _flutterTts.awaitSpeakCompletion(true);
+
       _flutterTts.setStartHandler(() {
         if (mounted) setState(() => _isSpeaking = true);
       });
+
       _flutterTts.setCompletionHandler(() {
         if (mounted) setState(() => _isSpeaking = false);
       });
+
       _flutterTts.setErrorHandler((msg) {
+        debugPrint("TTS Hatası: $msg");
         if (mounted) setState(() => _isSpeaking = false);
       });
+      
     } catch (e) {
-      debugPrint("TTS Hatası: $e");
+      debugPrint("TTS Başlatma Hatası: $e");
     }
   }
 
   Future<void> _speakStep({String? customText}) async {
+    // Eğer konuşuyorsa durdur
     if (_isSpeaking) {
       await _flutterTts.stop();
       if (mounted) setState(() => _isSpeaking = false);
-    } else {
-      String textToSpeak = customText ?? (_steps.isNotEmpty ? _steps[_currentStep] : "");
-      if (textToSpeak.isNotEmpty) {
-        await _flutterTts.speak(textToSpeak);
-      }
+      return; // Fonksiyondan çık
+    } 
+    
+    // Konuşmuyorsa başlat
+    String textToSpeak = customText ?? (_steps.isNotEmpty ? _steps[_currentStep] : "");
+    if (textToSpeak.isNotEmpty) {
+      await _flutterTts.speak(textToSpeak);
     }
   }
 
@@ -182,7 +229,6 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
     final colorScheme = theme.colorScheme;
     double progress = _steps.isNotEmpty ? (_currentStep + 1) / _steps.length : 0.0;
 
-    // Scaffold içinde güvenli alan yönetimi
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -207,12 +253,10 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         ],
       ),
       
-      // --- YAPISAL DÜZELTME: Column + Expanded ---
-      // Stack yerine bu yapıyı kullanıyoruz. Bu yapı widgetların üst üste binmesini engeller.
       body: SafeArea(
         child: Column(
           children: [
-            // 1. ZAMANLAYICI (Varsa)
+            // 1. ZAMANLAYICI
             if (_isTimerRunning)
               Container(
                 width: double.infinity,
@@ -234,8 +278,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
               minHeight: 6,
             ),
 
-            // 3. ORTA ALAN (Expanded PageView)
-            // Expanded, kalan tüm boşluğu doldurur. Hata vermez.
+            // 3. ORTA ALAN (Metin)
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
@@ -249,12 +292,12 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                 },
                 itemCount: _steps.length,
                 itemBuilder: (context, index) {
-                  // İçeriği ortalamak için Container Alignment kullanıyoruz
                   return Container(
-                    alignment: Alignment.center, // Dikey ve yatay ortala
+                    alignment: Alignment.center,
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(32.0),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min, 
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
@@ -272,7 +315,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                             _steps[index],
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 24,
+                              fontSize: 22, 
                               height: 1.5,
                               fontWeight: FontWeight.w500,
                               color: colorScheme.onSurface,
@@ -281,7 +324,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                           
                           const SizedBox(height: 50),
                           
-                          // SESLİ OKU BUTONU (Burada olması tıklanabilirliği garantiler)
+                          // ORTADAKİ SESLİ OKU BUTONU
                           SizedBox(
                             height: 50,
                             child: ElevatedButton.icon(
@@ -303,55 +346,63 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
               ),
             ),
 
-            // 4. ALT BUTONLAR (Sabit)
+            // 4. ALT BUTONLAR (Sabit - Expanded ile düzeltildi)
             Container(
               padding: const EdgeInsets.all(24),
-              color: theme.scaffoldBackgroundColor, // Arkası şeffaf olmasın
+              color: theme.scaffoldBackgroundColor,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // GERİ
+                  // GERİ BUTONU
                   if (_currentStep > 0)
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                      },
-                      icon: const Icon(Icons.arrow_back),
-                      label: const Text("Geri"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.surface,
-                        foregroundColor: colorScheme.onSurface,
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                        },
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text("Geri"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorScheme.surface,
+                          foregroundColor: colorScheme.onSurface,
+                        ),
                       ),
                     )
                   else
-                    const SizedBox(width: 80),
+                    const Spacer(),
 
-                  // İLERİ / BİTİR
-                  if (_currentStep < _steps.length - 1)
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                      },
-                      icon: const SizedBox.shrink(),
-                      label: const Row(children: [Text("İleri"), SizedBox(width: 5), Icon(Icons.arrow_forward)]),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        foregroundColor: colorScheme.onPrimary,
-                      ),
-                    )
-                  else
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        widget.onComplete();
-                      },
-                      icon: const Icon(Icons.check_circle),
-                      label: const Text("Bitir"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
+                  const SizedBox(width: 16),
+
+                  // İLERİ / BİTİR BUTONU
+                  Expanded(
+                    child: _currentStep < _steps.length - 1
+                        ? ElevatedButton.icon(
+                            onPressed: () {
+                              _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+                            },
+                            icon: const SizedBox.shrink(),
+                            label: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [Text("İleri"), SizedBox(width: 5), Icon(Icons.arrow_forward)],
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colorScheme.primary,
+                              foregroundColor: colorScheme.onPrimary,
+                            ),
+                          )
+                        : ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              widget.onComplete();
+                            },
+                            icon: const Icon(Icons.check_circle),
+                            label: const Text("Bitir"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                  ),
                 ],
               ),
             ),

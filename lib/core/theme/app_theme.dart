@@ -72,7 +72,7 @@ class AppTheme {
           foregroundColor: Colors.black,
           elevation: 5,
           // Butonların mobilde daha rahat basılması için minimum yükseklik
-          minimumSize: const Size(double.infinity, 54), 
+          minimumSize: const Size(0, 54), 
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

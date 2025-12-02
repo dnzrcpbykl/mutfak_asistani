@@ -5,7 +5,6 @@ import '../pantry/pantry_service.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
-
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
 }
@@ -18,6 +17,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Map<String, double> _categoryDistribution = {};
   Map<int, double> _monthlySpending = {}; // AyIndex (1-12) : Tutar
 
+  // Seçili Ay Gösterimi (Tıklama için)
+  int? _selectedMonthIndex;
+  double? _selectedMonthValue;
+
   bool _isLoading = true;
 
   @override
@@ -28,19 +31,20 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Future<void> _calculateStats() async {
     setState(() => _isLoading = true);
-
     try {
       // 1. MEVCUT KİLER DEĞERİ VE KATEGORİLER
-      final pantrySnapshot = await _pantryService.pantryRef.get();
+      // Düzeltme: Artık hangi kileri (Aile/Bireysel) kullanıyorsak oradan çekiyoruz
+      final ref = await _pantryService.getPantryCollection();
+      final pantrySnapshot = await ref.get();
+      
       double totalVal = 0;
       Map<String, double> cats = {};
 
       for (var doc in pantrySnapshot.docs) {
         final item = doc.data();
         double price = item.price ?? 0;
-        // Fiyat 0 ise varsayılan bir değer atamıyoruz, sadece girilenleri topluyoruz
         totalVal += price;
-
+        
         // Kategori sayımı
         if (!cats.containsKey(item.category)) {
           cats[item.category] = 0;
@@ -49,33 +53,30 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       }
 
       // 2. AYLIK HARCAMA (Geçmiş + Mevcut)
-      // Not: Tam bir "Harcama" analizi için hem şu an kilerde olanların ne zaman eklendiğine
-      // hem de silinenlerin ne zaman eklendiğine bakmak gerekir.
-      // Basitlik adına: Kilerdeki ürünlerin 'createdAt' tarihine göre aylık dökümünü alalım.
-      // (Daha ileri seviyede 'receipts' koleksiyonu tutulabilir)
-      
+      // Varsayılan olarak tüm ayları 0 ile başlat
       Map<int, double> monthly = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0, 10:0, 11:0, 12:0};
       
+      // Kilerdeki ürünlerin harcama zamanı
       for (var doc in pantrySnapshot.docs) {
         final item = doc.data();
         DateTime date = item.createdAt.toDate();
-        if (date.year == DateTime.now().year) { // Sadece bu yıl
+        // Sadece bu yılın verilerini al
+        if (date.year == DateTime.now().year) {
           monthly[date.month] = monthly[date.month]! + (item.price ?? 0);
         }
       }
 
-      // Geçmiş tüketim verilerini de ekleyelim (Logladıklarımız)
+      // Geçmiş tüketim/silinme verilerini de ekle
       final now = DateTime.now();
-      final startOfYear = DateTime(now.year, 1, 1); // Bu yılın 1 Ocak tarihi
+      final startOfYear = DateTime(now.year, 1, 1);
 
       final historySnapshot = await _pantryService.historyRef
           .where('consumedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
           .get();
+          
       for (var doc in historySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        // Eğer fiyat verisi varsa
         if (data['price'] != null) {
-           // consumedAt tarihini al
            Timestamp? ts = data['consumedAt'];
            if (ts != null) {
              DateTime date = ts.toDate();
@@ -119,20 +120,43 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 _buildSummaryCard(colorScheme),
                 
                 const SizedBox(height: 24),
-                const Text("📅 Aylık Harcama (Bu Yıl)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("📅 Aylık Harcama (Son 5 Ay)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 
                 // 2. BAR CHART (AYLIK)
                 SizedBox(
-                  height: 200,
+                  height: 220,
                   child: BarChart(
                     BarChartData(
                       alignment: BarChartAlignment.spaceAround,
-                      maxY: _getMaxSpending() * 1.2, // Tepede boşluk olsun
+                      maxY: _getMaxSpending() * 1.2,
+                      // TIKLAMA VE TOOLTIP AYARLARI
                       barTouchData: BarTouchData(
+                        enabled: true,
                         touchTooltipData: BarTouchTooltipData(
+                          // Tooltip arka plan rengi
                           tooltipBgColor: Colors.blueGrey,
+                          // ÇUBUĞUN ÜSTÜNDE ÇIKAN YAZI AYARI
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            return BarTooltipItem(
+                              // BURASI DÜZELTİLDİ: toStringAsFixed(2) ile virgülden sonra 2 basamak
+                              '${rod.toY.toStringAsFixed(2)} TL', 
+                              const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            );
+                          },
                         ),
+                        // TIKLAMA İŞLEMİ
+                        touchCallback: (FlTouchEvent event, barTouchResponse) {
+                          if (!event.isInterestedForInteractions || barTouchResponse == null || barTouchResponse.spot == null) {
+                            return;
+                          }
+                          // Tıklanan çubuğun değerini alıp aşağıya yazdıracağız
+                          setState(() {
+                            final spot = barTouchResponse.spot!;
+                            _selectedMonthIndex = spot.touchedBarGroupIndex; 
+                            _selectedMonthValue = spot.touchedRodData.toY;
+                          });
+                        },
                       ),
                       titlesData: FlTitlesData(
                         show: true,
@@ -153,10 +177,29 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       ),
                       gridData: const FlGridData(show: false),
                       borderData: FlBorderData(show: false),
-                      barGroups: _getBarGroups(colorScheme),
+                      // SADECE SON 5 AYI GÖSTEREN GRUPLAR
+                      barGroups: _getLast5MonthsGroups(colorScheme), 
                     ),
                   ),
                 ),
+
+                // TIKLANAN AY DETAYI
+                if (_selectedMonthValue != null)
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: colorScheme.primary)
+                      ),
+                      child: Text(
+                        "Seçilen Ay Harcaması: ${_selectedMonthValue!.toStringAsFixed(2)} TL",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 30),
                 const Text("🍩 Kiler Dağılımı", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -174,7 +217,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ),
                 
-                // Lejand (Pie Chart Altına)
+                // LEJAND
                 const SizedBox(height: 20),
                 Wrap(
                   spacing: 10,
@@ -193,7 +236,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     );
                   }).toList(),
                 )
-
               ],
             ),
           ),
@@ -216,6 +258,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             children: [
               const Text("Kiler Değeri", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.bold)),
               const SizedBox(height: 5),
+              // BURADA DA KÜSURAT DÜZELTİLDİ
               Text(
                 "${_totalPantryValue.toStringAsFixed(2)} TL", 
                 style: const TextStyle(color: Colors.black, fontSize: 28, fontWeight: FontWeight.bold)
@@ -232,26 +275,41 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  List<BarChartGroupData> _getBarGroups(ColorScheme colorScheme) {
+  // --- YENİ FONKSİYON: SADECE SON 5 AYI GETİRİR ---
+  List<BarChartGroupData> _getLast5MonthsGroups(ColorScheme colorScheme) {
     List<BarChartGroupData> groups = [];
-    _monthlySpending.forEach((month, amount) {
-      // Sadece harcama olan ayları veya hepsini gösterebilirsin
-      if (amount > 0 || (month >= DateTime.now().month - 2 && month <= DateTime.now().month)) {
+    DateTime now = DateTime.now();
+    
+    // Son 5 ayı döngüye al (i=4 demek, 4 ay öncesinden başla demek)
+    for (int i = 4; i >= 0; i--) {
+      // Ay hesapla (Örn: Şu an Mart ise -> Kasım, Aralık, Ocak, Şubat, Mart)
+      // Basitlik için sadece bu yılın verilerini çekiyoruz demiştik, o yüzden indexleri 1-12 arasında tutalım.
+      // Eğer yıl devri yapacaksak map yapısını ona göre kurmak gerekir. 
+      // Şimdilik sadece bu yılın aylarını gösterelim:
+      int targetMonth = now.month - i;
+      
+      if (targetMonth > 0) {
+        double amount = _monthlySpending[targetMonth] ?? 0.0;
         groups.add(
           BarChartGroupData(
-            x: month,
+            x: targetMonth,
             barRods: [
               BarChartRodData(
                 toY: amount,
                 color: colorScheme.primary,
-                width: 16,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                width: 20, // Çubukları biraz kalınlaştırdım
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                backDrawRodData: BackgroundBarChartRodData(
+                  show: true,
+                  toY: _getMaxSpending() * 1.1, // Arka plan gri çubuk
+                  color: Colors.grey.withOpacity(0.1),
+                ),
               )
             ],
           ),
         );
       }
-    });
+    }
     return groups;
   }
 
@@ -285,15 +343,20 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     return "";
   }
 
+  // --- RENK DÜZELTMESİ YAPILDI ---
+  // İsimler artık veritabanındaki (PantryTab) isimlerle birebir aynı.
   Color _getCategoryColor(String category) {
-    switch (category) {
-      case "Meyve & Sebze": return Colors.green;
-      case "Et & Tavuk & Balık": return Colors.redAccent;
-      case "Süt & Kahvaltılık": return Colors.amber;
-      case "Atıştırmalık": return Colors.purpleAccent;
-      case "İçecekler": return Colors.blue;
-      case "Temel Gıda & Bakliyat": return Colors.brown;
-      default: return Colors.grey;
-    }
+    // String karşılaştırması yaparken küçük harfe çevirelim ve boşlukları temizleyelim ki hata olmasın
+    final catLower = category.toLowerCase().trim();
+
+    if (catLower.contains("meyve") && catLower.contains("sebze")) return Colors.green;
+    if (catLower.contains("et") || catLower.contains("tavuk") || catLower.contains("balık")) return Colors.redAccent;
+    if (catLower.contains("süt") || catLower.contains("kahvaltı")) return Colors.amber;
+    if (catLower.contains("atıştırmalık") || catLower.contains("tatlı")) return Colors.purpleAccent;
+    if (catLower.contains("içecek")) return Colors.blue;
+    if (catLower.contains("temel") || catLower.contains("bakliyat")) return Colors.brown;
+    if (catLower.contains("temizlik") || catLower.contains("bakım")) return Colors.teal;
+    
+    return Colors.grey;
   }
 }
