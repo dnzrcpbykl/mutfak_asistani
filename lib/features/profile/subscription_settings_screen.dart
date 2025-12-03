@@ -70,6 +70,7 @@ class _SubscriptionSettingsScreenState extends State<SubscriptionSettingsScreen>
               await _profileService.cancelSubscription();
               await _checkStatus(); // Ekranı yenile
               if (mounted) {
+                // ignore: use_build_context_synchronously
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abonelik iptal edildi.")));
               }
             },
@@ -82,7 +83,7 @@ class _SubscriptionSettingsScreenState extends State<SubscriptionSettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    // colorScheme not used here; removed to fix analyzer hint
 
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
@@ -101,13 +102,13 @@ class _SubscriptionSettingsScreenState extends State<SubscriptionSettingsScreen>
                   ? const LinearGradient(colors: [Color(0xFF6A00FF), Color(0xFFFF00A8)])
                   : LinearGradient(colors: [Colors.grey.shade700, Colors.grey.shade900]),
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))]
+                boxShadow: [BoxShadow(color: Colors.black.withAlpha((0.2 * 255).round()), blurRadius: 10, offset: const Offset(0, 5))]
               ),
               child: Column(
                 children: [
                   Icon(_isPremium ? Icons.workspace_premium : Icons.person, size: 50, color: Colors.white),
                   const SizedBox(height: 10),
-                  Text("Mevcut Planınız", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
+                  Text("Mevcut Planınız", style: TextStyle(color: Colors.white.withAlpha((0.7 * 255).round()), fontSize: 14)),
                   Text(_planType, style: GoogleFonts.poppins(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                 ],
               ),

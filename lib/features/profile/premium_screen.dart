@@ -21,7 +21,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
   final Color _accentPink = const Color(0xFFFF00A8);
   final Color _darkBgStart = const Color(0xFF12032E);
   final Color _darkBgEnd = const Color(0xFF280F54);
-  final Color _cardUnselected = const Color(0xFF351B61).withOpacity(0.5);
+  final Color _cardUnselected = const Color(0xFF351B61).withAlpha((0.5 * 255).round());
 
   Future<void> _buySubscription() async {
     setState(() => _isLoading = true);
@@ -29,11 +29,14 @@ class _PremiumScreenState extends State<PremiumScreen> {
     try {
       await _profileService.upgradeToPremium(_selectedPlan);
       if (!mounted) return;
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Tebrikler! Artık Premium üyesiniz 👑"), backgroundColor: Colors.amber),
       );
+      // ignore: use_build_context_synchronously
       Navigator.pop(context);
     } catch (e) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -177,12 +180,12 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
                                 gradient: LinearGradient(
                                   colors: _selectedPlan == 'yearly' 
                                     ? [_accentPink, _primaryPurple] 
-                                    : [_primaryPurple.withOpacity(0.8), _primaryPurple], 
+                                    : [_primaryPurple.withAlpha((0.8 * 255).round()), _primaryPurple], 
                                 ),
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (_selectedPlan == 'yearly' ? _accentPink : _primaryPurple).withOpacity(0.4),
+                                    color: (_selectedPlan == 'yearly' ? _accentPink : _primaryPurple).withAlpha((0.4 * 255).round()),
                                     blurRadius: 20,
                                     offset: const Offset(0, 10),
                                   )
@@ -226,7 +229,6 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
                         child: IconButton(
                           icon: const Icon(Icons.close, color: Colors.white, size: 30),
                           onPressed: () {
-                            print("Kapat butonuna basıldı!"); // Debug için
                             Navigator.pop(context);
                           },
                         ),
@@ -246,7 +248,7 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
         children: [
           Icon(Icons.check_circle, color: _accentPink, size: 22),
           const SizedBox(width: 12),
-          Expanded(child: Text(text, style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.9), fontSize: 15))),
+          Expanded(child: Text(text, style: GoogleFonts.poppins(color: Colors.white.withAlpha((0.9 * 255).round()), fontSize: 15))),
         ],
       ),
     );
@@ -265,13 +267,13 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
             decoration: BoxDecoration(
               color: isSelected ? null : _cardUnselected,
               gradient: isSelected ? LinearGradient(
-                colors: [_primaryPurple.withOpacity(0.6), _accentPink.withOpacity(0.6)],
+                colors: [_primaryPurple.withAlpha((0.6 * 255).round()), _accentPink.withAlpha((0.6 * 255).round())],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight
               ) : null,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: isSelected ? _accentPink : Colors.white.withOpacity(0.1), width: isSelected ? 2 : 1),
-              boxShadow: isSelected ? [BoxShadow(color: _accentPink.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))] : [],
+              border: Border.all(color: isSelected ? _accentPink : Colors.white.withAlpha((0.1 * 255).round()), width: isSelected ? 2 : 1),
+              boxShadow: isSelected ? [BoxShadow(color: _accentPink.withAlpha((0.3 * 255).round()), blurRadius: 15, offset: const Offset(0, 5))] : [],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +299,7 @@ Ayarlar menüsünden aboneliğinizi dilediğiniz zaman yönetebilirsiniz.
               top: -12, right: 15,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: _accentPink, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _accentPink.withOpacity(0.5), blurRadius: 8)]),
+                decoration: BoxDecoration(color: _accentPink, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: _accentPink.withAlpha((0.5 * 255).round()), blurRadius: 8)]),
                 child: Text("EN İYİ FİYAT", style: GoogleFonts.poppins(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
             ),

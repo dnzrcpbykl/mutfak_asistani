@@ -1,0 +1,10 @@
+Analyzing mutfak_asistani...                                    
+
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\auth\login_screen.dart:173:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\pantry\add_pantry_item_screen.dart:120:33 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\pantry\add_pantry_item_screen.dart:121:40 - use_build_context_synchronously
+   info - The imported package 'flutter_tts' isn't a dependency of the importing package - lib\features\recipes\cooking_mode_screen.dart:5:8 - depend_on_referenced_packages
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\recipes\recipe_recommendation_screen.dart:840:20 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\shopping_list\shopping_list_view.dart:286:65 - use_build_context_synchronously
+
+6 issues found. (ran in 43.5s)

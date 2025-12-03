@@ -5,7 +5,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/empty_state_widget.dart';
 import '../market/market_service.dart';
 import '../../core/utils/market_utils.dart';
-import '../../core/utils/pdf_export_service.dart';
 
 // --- YENİ EKLENEN IMPORTLAR (Kiler Entegrasyonu İçin) ---
 import '../pantry/pantry_service.dart';
@@ -23,7 +22,6 @@ class ShoppingListView extends StatefulWidget {
 
 class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepAliveClientMixin {
   final ShoppingService _service = ShoppingService();
-  final MarketService _marketService = MarketService();
   
   // --- YENİ SERVİS ---
   final PantryService _pantryService = PantryService(); 
@@ -80,10 +78,15 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
       String unitStr = quantityMatch.group(2)!;
       
       // Birim Standardizasyonu
-      if (unitStr == 'l' || unitStr == 'litre') defaultUnit = 'lt';
-      else if (unitStr == 'gram') defaultUnit = 'gr';
-      else if (unitStr == 'kilogram') defaultUnit = 'kg';
-      else defaultUnit = unitStr;
+      if (unitStr == 'l' || unitStr == 'litre') {
+        defaultUnit = 'lt';
+      } else if (unitStr == 'gram') {
+        defaultUnit = 'gr';
+      } else if (unitStr == 'kilogram') {
+        defaultUnit = 'kg';
+      } else {
+        defaultUnit = unitStr;
+      }
     } else {
       // Eğer isimde yazmıyorsa, ürün tipine göre varsayılan ata
       if (cleanName.toLowerCase().contains("yağ") || cleanName.toLowerCase().contains("süt") || cleanName.toLowerCase().contains("su")) {
@@ -95,7 +98,6 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
       }
     }
 
-    String imageUrl = item['imageUrl'] ?? '';
     List markets = item['markets'] ?? [];
     
     double bestPrice = 0.0;
@@ -109,7 +111,6 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
 
     // Kategori Tahmini
     String estimatedCategory = "Diğer";
-    String lowerName = cleanName.toLowerCase();
     // (Burası Home Screen'deki kategori mantığıyla aynı çalışır, detaya gerek yok)
 
     DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
@@ -192,6 +193,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                   await _pantryService.addPantryItem(newItem);
                   await _service.deleteItem(item['id']);
                   if (mounted) {
+                    // ignore: use_build_context_synchronously
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text("$cleanName kilere taşındı!"), backgroundColor: Colors.green),
                     );
@@ -270,7 +272,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                   children: [
                     Text(
                       "${items.length} Ürün",
-                      style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.bold),
+                      style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round()), fontWeight: FontWeight.bold),
                     ),
                     Row(
                       children: [
@@ -281,7 +283,10 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                             tooltip: "Tamamlananları Sil",
                             onPressed: () async {
                               await _service.clearCompleted();
-                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tamamlananlar silindi.")));
+                              if (mounted) {
+                                // ignore: use_build_context_synchronously
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tamamlananlar silindi.")));
+                              }
                             },
                           ),
                         
@@ -402,7 +407,7 @@ class _ShoppingListViewState extends State<ShoppingListView> with AutomaticKeepA
                                                 margin: const EdgeInsets.only(right: 8),
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 decoration: BoxDecoration(
-                                                  color: isCheapest ? Colors.green.withOpacity(0.1) : theme.cardColor,
+                                                  color: isCheapest ? Colors.green.withAlpha((0.1 * 255).round()) : theme.cardColor,
                                                   borderRadius: BorderRadius.circular(8),
                                                   border: Border.all(color: isCheapest ? Colors.green : Colors.grey.shade300),
                                                 ),

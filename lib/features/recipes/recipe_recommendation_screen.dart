@@ -1,4 +1,5 @@
 // lib/features/recipes/recipe_recommendation_screen.dart
+// ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -108,7 +109,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               if (!isPremium && needsAd)
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(color: Colors.purple.withAlpha((0.1 * 255).round()), borderRadius: BorderRadius.circular(8)),
                   child: const Row(children: [Icon(Icons.ondemand_video, size: 16, color: Colors.purple), SizedBox(width: 8), Expanded(child: Text("Günlük ücretsiz hakkın doldu. Yeni tarif için kısa bir reklam izlemelisin.", style: TextStyle(fontSize: 12)))]),
                 ),
 
@@ -234,7 +235,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
               const SizedBox(height: 20),
               Text("Cyber Chef Menüyü Hazırlıyor...", style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text("Tercihine uygun tarifler seçiliyor...", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
+              Text("Tercihine uygun tarifler seçiliyor...", style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round()), fontSize: 12)),
             ],
           ),
         ),
@@ -269,7 +270,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         return Icon(
           Icons.local_fire_department,
           size: 18,
-          color: index < level ? Colors.orange : Colors.grey.withOpacity(0.3),
+          color: index < level ? Colors.orange : Colors.grey.withAlpha((0.3 * 255).round()),
         );
       }),
     );
@@ -294,7 +295,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                 Container(
                   width: 40, height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(color: Colors.grey.withAlpha((0.3 * 255).round()), borderRadius: BorderRadius.circular(2)),
                 ),
                 const Text("Hazırlık Kontrolü 🔪", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
@@ -403,12 +404,12 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.restaurant_menu, size: 80, color: colorScheme.onSurface.withOpacity(0.2)),
+            Icon(Icons.restaurant_menu, size: 80, color: colorScheme.onSurface.withAlpha((0.2 * 255).round())),
             const SizedBox(height: 20),
             Text(
               "Henüz uygun tarif yok.\nŞefe sorarak menü oluştur!", 
               textAlign: TextAlign.center, 
-              style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 16)
+              style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round()), fontSize: 16)
             ),
           ],
         ),
@@ -493,11 +494,11 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
 
     return Card(
       // TAMAMLANDIYSA YEŞİLİMTRAK YAP
-      color: isCompleted ? Colors.green.withOpacity(0.1) : null,
+      color: isCompleted ? Colors.green.withAlpha((0.1 * 255).round()) : null,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ExpansionTile(
-        iconColor: colorScheme.onSurface.withOpacity(0.7),
-        collapsedIconColor: colorScheme.onSurface.withOpacity(0.7),
+        iconColor: colorScheme.onSurface.withAlpha((0.7 * 255).round()),
+        collapsedIconColor: colorScheme.onSurface.withAlpha((0.7 * 255).round()),
         leading: isCompleted 
             // TAMAMLANDI İKONU
             ? const Icon(Icons.check_circle, color: Colors.green, size: 40)
@@ -509,7 +510,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                   shape: BoxShape.circle,
                   border: Border.all(color: statusColor, width: 2),
                   color: theme.cardTheme.color,
-                  boxShadow: isDark ? [BoxShadow(color: statusColor.withOpacity(0.2), blurRadius: 10)] : [],
+                  boxShadow: isDark ? [BoxShadow(color: statusColor.withAlpha((0.2 * 255).round()), blurRadius: 10)] : [],
                 ),
                 child: Center(
                   child: Text(
@@ -589,9 +590,9 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                   margin: const EdgeInsets.symmetric(vertical: 12),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isUserPremium ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                    color: _isUserPremium ? Colors.green.withAlpha((0.1 * 255).round()) : Colors.grey.withAlpha((0.1 * 255).round()),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _isUserPremium ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
+                    border: Border.all(color: _isUserPremium ? Colors.green.withAlpha((0.3 * 255).round()) : Colors.grey.withAlpha((0.3 * 255).round())),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,7 +636,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
+                                    color: Colors.black.withAlpha((0.6 * 255).round()),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: const Text(
@@ -656,9 +657,9 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(isDark ? 0.15 : 0.1),
+                      color: Colors.amber.withAlpha(((isDark ? 0.15 : 0.1) * 255).round()),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                      border: Border.all(color: Colors.amber.withAlpha((0.5 * 255).round())),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,7 +674,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                         const SizedBox(height: 8),
                         ...subTips.map((tip) => Padding(
                           padding: const EdgeInsets.only(bottom: 4.0),
-                          child: Text("• ${tip.replaceAll('**', '')}", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.9), fontSize: 13)),
+                          child: Text("• ${tip.replaceAll('**', '')}", style: TextStyle(color: colorScheme.onSurface.withAlpha((0.9 * 255).round()), fontSize: 13)),
                         )),
                       ],
                     ),
@@ -684,17 +685,17 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(isDark ? 0.1 : 0.05),
+                      color: Colors.red.withAlpha(((isDark ? 0.1 : 0.05) * 255).round()),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+                      border: Border.all(color: Colors.redAccent.withAlpha((0.3 * 255).round())),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text("Eksik Malzemeler", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent)),
                         const SizedBox(height: 8),
-                        Text(missing.join(", "), style: TextStyle(color: colorScheme.onSurface.withOpacity(0.8))),
-                        Divider(color: colorScheme.onSurface.withOpacity(0.1), height: 20),
+                        Text(missing.join(", "), style: TextStyle(color: colorScheme.onSurface.withAlpha((0.8 * 255).round()))),
+                        Divider(color: colorScheme.onSurface.withAlpha((0.1 * 255).round()), height: 20),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -713,7 +714,7 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                                 List<Map<String, dynamic>> marketList = product.markets.map((m) => {
                                   'marketName': m.marketName,
                                   'price': m.price,
-                                  'unitPriceText': m.unitPriceText ?? ''
+                                  'unitPriceText': m.unitPriceText
                                 }).toList();
 
                                 // 3. Zengin veriyi listeye ekle
@@ -760,13 +761,13 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
                           decoration: BoxDecoration(
                             color: theme.cardColor,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
+                            border: Border.all(color: colorScheme.onSurface.withAlpha((0.1 * 255).round())),
                           ),
                           child: Row(
                             children: [
                               _buildDifficultyVisual(recipe.difficulty),
                               const SizedBox(width: 4),
-                              Text(recipe.difficulty, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.7))),
+                              Text(recipe.difficulty, style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withAlpha((0.7 * 255).round()))),
                             ],
                           ),
                         ),
@@ -801,62 +802,63 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
     );
   }
 
-  void _showConsumeDialog(BuildContext context, Recipe recipe) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
+  void _showConsumeDialog(BuildContext parentContext, Recipe recipe) {
+    final colorScheme = Theme.of(parentContext).colorScheme;
+
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).cardTheme.color,
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Theme.of(dialogContext).cardTheme.color,
         title: Text("Ellerine Sağlık! 👨‍🍳", style: TextStyle(color: colorScheme.onSurface)),
         content: Text(
           "Yemeği tamamladın. Tarifteki miktarlar (${recipe.ingredients.length} kalem) kiler stoğundan düşülsün mü?",
-          style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
+          style: TextStyle(color: colorScheme.onSurface.withAlpha((0.7 * 255).round())),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("İptal")),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
             onPressed: () async {
-              Navigator.pop(context); // İlk diyaloğu kapat
-              
-              // Yükleniyor göster
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Stoklar güncelleniyor...")));
-              
-              // YENİ: Tarif tamamlandı olarak işaretle
-              Provider.of<RecipeProvider>(context, listen: false).markRecipeAsCompleted(recipe.name);
-
-              // Akıllı düşüm işlemini başlat
+              // Akıllı düşüm işlemini başlat (dialog'ı açık bırakıyoruz, sonuç sonrası kapatacağız)
               final logs = await _pantryService.consumeIngredientsSmart(recipe.ingredients);
-              
-              
-              // Listeyi yenile
-              if (mounted) {
-                 Provider.of<RecipeProvider>(context, listen: false).fetchAndCalculateRecommendations(forceRefresh: true);
-                 
-                 // Sonuç Raporu Göster
-                 showDialog(
-                   context: context,
-                   builder: (ctx) => AlertDialog(
-                     title: const Text("Stok Raporu 📋"),
-                     content: SizedBox(
-                       height: 200,
-                       width: double.maxFinite,
-                       child: ListView.builder(
-                         itemCount: logs.length,
-                         itemBuilder: (c, i) => ListTile(
-                           dense: true,
-                           leading: const Icon(Icons.check, size: 16, color: Colors.green),
-                           title: Text(logs[i], style: const TextStyle(fontSize: 12)),
-                         ),
-                       ),
-                     ),
-                     actions: [
-                       TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Tamam"))
-                     ],
-                   )
-                 );
-              }
+
+              // await'dan hemen sonra mounted kontrolü yap ve UI işlemlerini gerçekleştirelim
+              if (!mounted) return;
+
+              // İlk diyaloğu kapat (kök context'i kullanıyoruz)
+              Navigator.pop(parentContext);
+
+              // Yükleniyor/snackbar göster
+              ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Stoklar güncellendi.")));
+
+              // YENİ: Tarif tamamlandı olarak işaretle ve listeyi yenile (provider'ı burada alıyoruz)
+              final recipeProvider = Provider.of<RecipeProvider>(parentContext, listen: false);
+              recipeProvider.markRecipeAsCompleted(recipe.name);
+              recipeProvider.fetchAndCalculateRecommendations(forceRefresh: true);
+
+              // Sonuç raporunu göster
+              if (!mounted) return;
+              showDialog(
+                context: parentContext,
+                builder: (ctx) => AlertDialog(
+                  title: const Text("Stok Raporu 📋"),
+                  content: SizedBox(
+                    height: 200,
+                    width: double.maxFinite,
+                    child: ListView.builder(
+                      itemCount: logs.length,
+                      itemBuilder: (c, i) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.check, size: 16, color: Colors.green),
+                        title: Text(logs[i], style: const TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Tamam"))
+                  ],
+                ),
+              );
             },
             child: const Text("Evet, Düş"),
           ),
@@ -873,13 +875,13 @@ class _RecipeRecommendationScreenState extends State<RecipeRecommendationScreen>
       decoration: BoxDecoration(
         color: isDark ? Colors.black26 : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
+        border: Border.all(color: colorScheme.onSurface.withAlpha((0.1 * 255).round())),
       ),
       child: Row(
         children: [
           Icon(icon, size: 16, color: colorScheme.secondary),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7), fontSize: 12)),
+          Text(label, style: TextStyle(color: colorScheme.onSurface.withAlpha((0.7 * 255).round()), fontSize: 12)),
         ],
       ),
     );

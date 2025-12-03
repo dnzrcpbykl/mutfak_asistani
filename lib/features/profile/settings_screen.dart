@@ -130,7 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // TEHLİKELİ BÖLGE
           const SizedBox(height: 10),
           ListTile(
-            tileColor: Colors.red.withOpacity(0.1),
+            tileColor: Colors.red.withAlpha((0.1 * 255).round()),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             leading: const Icon(Icons.delete_forever, color: Colors.red),
             title: const Text("Hesabımı Sil", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),

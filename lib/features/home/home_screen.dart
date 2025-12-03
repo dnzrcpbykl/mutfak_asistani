@@ -391,7 +391,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                       Expanded(
                         flex: 2,
                         child: DropdownButtonFormField<String>(
-                          value: selectedUnit,
+                          initialValue: selectedUnit,
                           decoration: const InputDecoration(
                             labelText: "Birim", // Parantez içini sildik
                             contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15),
@@ -429,7 +429,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   
                   // KATEGORİ SEÇİMİ
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
+                    initialValue: selectedCategory,
                     decoration: const InputDecoration(labelText: "Kategori"),
                     items: _categories.where((c) => c != "Tümü").map((String category) {
                       return DropdownMenuItem(value: category, child: Text(category, style: const TextStyle(fontSize: 14)));
@@ -474,7 +474,10 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                       category: selectedCategory, 
                       pieceCount: newPiece, 
                     );
-                    if (mounted) Navigator.pop(context);
+                    if (mounted) {
+                      // ignore: use_build_context_synchronously
+                      Navigator.pop(context);
+                    }
                   }
                 },
                 child: const Text("Kaydet"),
@@ -518,7 +521,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                   filled: true,
-                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.05) : Colors.grey.shade200,
+                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.white.withAlpha((0.05 * 255).round()) : Colors.grey.shade200,
                 ),
               ),
             ),
@@ -615,10 +618,10 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
+                decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: expirationColor.withOpacity(0.5)),
-                color: expirationColor.withOpacity(0.1),
+                border: Border.all(color: expirationColor.withAlpha((0.5 * 255).round())),
+                color: expirationColor.withAlpha((0.1 * 255).round()),
               ),
               child: Icon(
                 _getCategoryIcon(_normalizeCategory(
@@ -640,7 +643,7 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   if (item.brand != null && 
                       item.brand!.isNotEmpty && 
                       !['diger', 'diğer', 'bilinmiyor', 'markasız'].contains(item.brand!.toLowerCase()))
-                    Text(item.brand!, style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12)),
+                    Text(item.brand!, style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round()), fontSize: 12)),
                   Text(quantityText, style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
@@ -652,19 +655,19 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                   Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: expirationColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: expirationColor.withOpacity(0.3))),
+                    decoration: BoxDecoration(color: expirationColor.withAlpha((0.1 * 255).round()), borderRadius: BorderRadius.circular(6), border: Border.all(color: expirationColor.withAlpha((0.3 * 255).round()))),
                     child: Text(DateFormat('dd/MM').format(item.expirationDate!), style: TextStyle(color: expirationColor, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    InkWell(onTap: () => _showEditDialog(item), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.edit, size: 18, color: Colors.blue))),
+                    InkWell(onTap: () => _showEditDialog(item), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.blue.withAlpha((0.1 * 255).round()), shape: BoxShape.circle), child: const Icon(Icons.edit, size: 18, color: Colors.blue))),
                     const SizedBox(width: 8),
-                    InkWell(onTap: () => _showQuantityDialog(item, false), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.remove, size: 18, color: Colors.orange))),
+                    InkWell(onTap: () => _showQuantityDialog(item, false), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.orange.withAlpha((0.1 * 255).round()), shape: BoxShape.circle), child: const Icon(Icons.remove, size: 18, color: Colors.orange))),
                     const SizedBox(width: 8),
-                    InkWell(onTap: () => _showQuantityDialog(item, true), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.add, size: 18, color: Colors.green))),
+                    InkWell(onTap: () => _showQuantityDialog(item, true), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.green.withAlpha((0.1 * 255).round()), shape: BoxShape.circle), child: const Icon(Icons.add, size: 18, color: Colors.green))),
                     const SizedBox(width: 8),
-                    InkWell(onTap: () => _pantryService.deletePantryItem(item.id), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.delete_outline, size: 18, color: Colors.red))),
+                    InkWell(onTap: () => _pantryService.deletePantryItem(item.id), borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.red.withAlpha((0.1 * 255).round()), shape: BoxShape.circle), child: const Icon(Icons.delete_outline, size: 18, color: Colors.red))),
                   ],
                 )
               ],

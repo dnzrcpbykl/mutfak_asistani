@@ -14,16 +14,27 @@ class UnitUtils {
     String unit = 'adet'; // Varsayılan
     String lowerText = ingredientText.toLowerCase();
 
-    if (lowerText.contains('kg') || lowerText.contains('kilogram')) unit = 'kg';
-    else if (lowerText.contains('gr') || lowerText.contains('gram')) unit = 'gr';
-    else if (lowerText.contains('lt') || lowerText.contains('litre')) unit = 'lt';
-    else if (lowerText.contains('ml') || lowerText.contains('mililitre')) unit = 'ml';
-    else if (lowerText.contains('su bardağı') || lowerText.contains('bardak')) unit = 'bardak';
-    else if (lowerText.contains('yemek kaşığı') || lowerText.contains('kaşık')) unit = 'kaşık';
-    else if (lowerText.contains('çay kaşığı') || lowerText.contains('tatlı kaşığı')) unit = 'çay kaşığı';
-    else if (lowerText.contains('paket')) unit = 'paket';
-    else if (lowerText.contains('diş')) unit = 'diş'; 
-    else if (lowerText.contains('demet') || lowerText.contains('bağ')) unit = 'demet';
+    if (lowerText.contains('kg') || lowerText.contains('kilogram')) {
+      unit = 'kg';
+    } else if (lowerText.contains('gr') || lowerText.contains('gram')) {
+      unit = 'gr';
+    } else if (lowerText.contains('lt') || lowerText.contains('litre')) {
+      unit = 'lt';
+    } else if (lowerText.contains('ml') || lowerText.contains('mililitre')) {
+      unit = 'ml';
+    } else if (lowerText.contains('su bardağı') || lowerText.contains('bardak')) {
+      unit = 'bardak';
+    } else if (lowerText.contains('yemek kaşığı') || lowerText.contains('kaşık')) {
+      unit = 'kaşık';
+    } else if (lowerText.contains('çay kaşığı') || lowerText.contains('tatlı kaşığı')) {
+      unit = 'çay kaşığı';
+    } else if (lowerText.contains('paket')) {
+      unit = 'paket';
+    } else if (lowerText.contains('diş')) {
+      unit = 'diş';
+    } else if (lowerText.contains('demet') || lowerText.contains('bağ')) {
+      unit = 'demet';
+    }
 
     return {'amount': amount, 'unit': unit};
   }

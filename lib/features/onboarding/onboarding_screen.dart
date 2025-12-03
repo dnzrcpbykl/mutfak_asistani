@@ -88,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         Text(
                           _contents[index]["desc"]!,
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: colorScheme.onSurface.withOpacity(0.7), height: 1.4),
+                          style: TextStyle(fontSize: 16, color: colorScheme.onSurface.withAlpha((0.7 * 255).round()), height: 1.4),
                         ),
                         
                         const Spacer(flex: 2), // Alt kısımda daha fazla boşluk kalsın

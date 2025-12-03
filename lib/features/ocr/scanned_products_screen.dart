@@ -239,7 +239,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: colorScheme.primary.withOpacity(0.2),
+                        color: colorScheme.primary.withAlpha((0.2 * 255).round()),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: colorScheme.primary),
                       ),
@@ -255,7 +255,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                   padding: const EdgeInsets.only(top: 8.0, left: 34),
                   child: Text(
                     "Fiş Tarihi: ${DateFormat('dd.MM.yyyy').format(_receiptDate)}",
-                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.6)),
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withAlpha((0.6 * 255).round())),
                   ),
                 ),
               ],
@@ -272,7 +272,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                 
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withOpacity(0.5),
+                  color: _selectedItems[index] ? theme.cardTheme.color : theme.cardTheme.color?.withAlpha((0.5 * 255).round()),
                   child: ListTile(
                     leading: Checkbox(
                       value: _selectedItems[index],
@@ -287,7 +287,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                     
                     subtitle: Text(
                       "${(item['amount'] as num).toDouble() == (item['amount'] as num).toInt() ? (item['amount'] as num).toInt() : (item['amount'] as num).toString()} ${item['unit']}",
-                      style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
+                      style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round())),
                     ),
                     
                     trailing: SizedBox(
@@ -314,7 +314,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.withOpacity(0.5)),
+                                border: Border.all(color: Colors.grey.withAlpha((0.5 * 255).round())),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -335,7 +335,7 @@ class _ScannedProductsScreenState extends State<ScannedProductsScreen> {
           Container(
             decoration: BoxDecoration(
               color: theme.scaffoldBackgroundColor,
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]
+              boxShadow: [BoxShadow(color: Colors.black.withAlpha((0.05 * 255).round()), blurRadius: 10, offset: const Offset(0, -5))]
             ),
             child: SafeArea(
               top: false, 

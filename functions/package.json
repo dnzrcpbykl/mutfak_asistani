@@ -1,17 +1,18 @@
 {
-  "name": "@empty/functions",
+  "name": "mutfak-asistani-functions",
   "version": "1.0.0",
-  "description": "",
+  "description": "Market Fiyat Güncelleyici",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "engines": {
+    "node": "20"
+  },
   "dependencies": {
-    "firebase-functions": "5.0.1",
+    "firebase-admin": "^11.0.0",  
+    "firebase-functions": "^5.0.1",
     "node-fetch": "^2.6.7"
-  }
+  },
+  "private": true
 }

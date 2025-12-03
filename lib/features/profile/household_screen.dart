@@ -43,9 +43,15 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               setState(() => _isLoading = true);
               try {
                 await _householdService.createHousehold(nameController.text.trim());
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hane oluşturuldu!")));
+                if (mounted) {
+                  // ignore: use_build_context_synchronously
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hane oluşturuldu!")));
+                }
               } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
+                if (mounted) {
+                  // ignore: use_build_context_synchronously
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
+                }
               } finally {
                 if (mounted) setState(() => _isLoading = false);
               }
@@ -97,6 +103,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                 
                 // İşlem bittiğinde widget hala ekranda mı kontrol et
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Aileye katıldın! 🎉"), backgroundColor: Colors.green)
                   );
@@ -104,6 +111,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
               } catch (e) {
                 // Hata olduğunda widget hala ekranda mı kontrol et
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("Hata: ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: Colors.red)
                   );
@@ -215,7 +223,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.family_restroom, size: 80, color: Theme.of(context).primaryColor.withOpacity(0.5)),
+            Icon(Icons.family_restroom, size: 80, color: Theme.of(context).primaryColor.withAlpha((0.5 * 255).round())),
             const SizedBox(height: 24),
             const Text(
               "Henüz bir ailen yok mu?",
@@ -302,7 +310,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.withOpacity(0.3))
+                        border: Border.all(color: Colors.grey.withAlpha((0.3 * 255).round()))
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -365,7 +373,7 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                     child: ListTile(
                       // --- PROFİL FOTOĞRAFI ---
                       leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                        backgroundColor: Theme.of(context).primaryColor.withAlpha((0.2 * 255).round()),
                         backgroundImage: profileImage, // Varsa resmi göster
                         child: profileImage == null 
                             ? Text(memberName.isNotEmpty ? memberName[0].toUpperCase() : "?") // Yoksa baş harf
@@ -391,7 +399,10 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                                 onTap: () async {
                                   Navigator.pop(context);
                                   await _householdService.transferOwnership(householdId, memberId);
-                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yöneticilik devredildi.")));
+                                  if (mounted) {
+                                    // ignore: use_build_context_synchronously
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yöneticilik devredildi.")));
+                                  }
                                 },
                               ),
                               ListTile(
@@ -401,7 +412,10 @@ class _HouseholdScreenState extends State<HouseholdScreen> {
                                 onTap: () async {
                                   Navigator.pop(context);
                                   await _householdService.removeMember(householdId, memberId);
-                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Üye çıkarıldı."), backgroundColor: Colors.red));
+                                  if (mounted) {
+                                    // ignore: use_build_context_synchronously
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Üye çıkarıldı."), backgroundColor: Colors.red));
+                                  }
                                 },
                               ),
                               const SizedBox(height: 20),

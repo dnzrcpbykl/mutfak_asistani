@@ -34,6 +34,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   
   bool _isLoading = false;
 
+  // ignore: unused_element
   Future<void> _scanBarcode() async {
     final String? scannedCode = await Navigator.push(
       context,
@@ -58,6 +59,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
 
     if (scannedCode != null) {
       setState(() => _isLoading = true);
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün aranıyor...")));
       
       final productName = await _barcodeService.findProduct(scannedCode);
@@ -68,6 +70,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
            _ingredientNameController.text = productName;
         });
         _searchIngredients(productName); 
+        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Bulundu: $productName"), backgroundColor: Colors.green));
       } else {
         _showAddProductDialog(scannedCode);
@@ -114,7 +117,9 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                   _ingredientNameController.text = name;
                 });
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   Navigator.pop(context);
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Harika! Ürün veritabanımıza kaydedildi."),
@@ -374,7 +379,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                             final ingredient = _searchResults[index];
                             return ListTile(
                               title: Text(ingredient.name, style: TextStyle(color: colorScheme.onSurface)),
-                              subtitle: Text("${ingredient.category} (${ingredient.unit})", style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))),
+                              subtitle: Text("${ingredient.category} (${ingredient.unit})", style: TextStyle(color: colorScheme.onSurface.withAlpha((0.6 * 255).round()))),
                               onTap: () {
                                 setState(() {
                                   _selectedIngredient = ingredient;

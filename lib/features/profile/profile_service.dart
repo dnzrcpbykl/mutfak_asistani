@@ -46,7 +46,7 @@ class ProfileService {
       password: password
     );
     await currentUser!.reauthenticateWithCredential(credential);
-    await currentUser!.updateEmail(newEmail);
+    await currentUser!.verifyBeforeUpdateEmail(newEmail);
     await _firestore.collection('users').doc(currentUser!.uid).update({'email': newEmail});
   }
 

@@ -25,10 +25,10 @@ class EmptyStateWidget extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(30),
             decoration: BoxDecoration(
-              color: colorScheme.primary.withOpacity(0.1),
+              color: colorScheme.primary.withAlpha((0.1 * 255).round()),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 80, color: colorScheme.primary.withOpacity(0.5)),
+            child: Icon(icon, size: 80, color: colorScheme.primary.withAlpha((0.5 * 255).round())),
           )
           .animate() // Animasyon Başlangıcı
           .scale(duration: 600.ms, curve: Curves.elasticOut) // Büyüyerek gel
@@ -43,7 +43,7 @@ class EmptyStateWidget extends StatelessWidget {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: colorScheme.onSurface.withOpacity(0.8),
+              color: colorScheme.onSurface.withAlpha((0.8 * 255).round()),
             ),
           ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.2, end: 0), // Aşağıdan yukarı kay
 
@@ -57,7 +57,7 @@ class EmptyStateWidget extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: colorScheme.onSurface.withOpacity(0.5),
+                  color: colorScheme.onSurface.withAlpha((0.5 * 255).round()),
                 ),
               ),
             ).animate().fadeIn(delay: 500.ms),

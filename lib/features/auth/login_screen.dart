@@ -168,7 +168,9 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                 await FirebaseAuth.instance
                     .sendPasswordResetEmail(email: email);
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   Navigator.pop(context); // Pencereyi kapat
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
@@ -179,12 +181,15 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                 }
               } on FirebaseAuthException catch (e) {
                 String errorMsg = "Bir hata oluştu.";
-                if (e.code == 'user-not-found')
+                if (e.code == 'user-not-found') {
                   errorMsg = "Bu e-posta ile kayıtlı kullanıcı bulunamadı.";
-                if (e.code == 'invalid-email')
+                }
+                if (e.code == 'invalid-email') {
                   errorMsg = "Geçersiz e-posta formatı.";
+                }
 
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                         content: Text(errorMsg), backgroundColor: Colors.red),
@@ -314,7 +319,7 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                     border: Border.all(color: colorScheme.primary, width: 2),
                     boxShadow: [
                       BoxShadow(
-                          color: colorScheme.primary.withOpacity(0.3),
+                          color: colorScheme.primary.withAlpha((0.3 * 255).round()),
                           blurRadius: 20)
                     ]),
                 child: Icon(Icons.smart_toy,
@@ -412,8 +417,8 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                           text: TextSpan(
                             text: "Kişisel verilerimin işlenmesine ilişkin ",
                             style: TextStyle(
-                                color: colorScheme.onSurface.withOpacity(0.7),
-                                fontSize: 12),
+                              color: colorScheme.onSurface.withAlpha((0.7 * 255).round()),
+                              fontSize: 12),
                             children: [
                               TextSpan(
                                 text: "Aydınlatma Metni",
@@ -461,10 +466,10 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                             padding: const EdgeInsets.symmetric(
                                 vertical: 12, horizontal: 16),
                             decoration: BoxDecoration(
-                              color: colorScheme.error.withOpacity(0.1),
+                              color: colorScheme.error.withAlpha((0.1 * 255).round()),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: colorScheme.error.withOpacity(0.5)),
+                                  color: colorScheme.error.withAlpha((0.5 * 255).round())),
                             ),
                             child: Row(
                               children: [
@@ -501,9 +506,9 @@ Dilediğiniz zaman "Ayarlar" menüsünden hesabınızı ve tüm verilerinizi kal
                               text: _isLogin
                                   ? "Hesabın yok mu? "
                                   : "Zaten hesabın var mı? ",
-                              style: TextStyle(
+                                style: TextStyle(
                                   color: colorScheme.onSurface
-                                      .withOpacity(0.7)),
+                                    .withAlpha((0.7 * 255).round())),
                               children: [
                                 TextSpan(
                                   text: _isLogin ? "Kayıt Ol" : "Giriş Yap",

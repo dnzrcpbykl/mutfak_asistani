@@ -46,7 +46,7 @@ class AppTheme {
         elevation: 0, // Düz modern görünüm
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20), // Robotun yuvarlak hatları gibi
-          side: BorderSide(color: Colors.white.withOpacity(0.05), width: 1), // İnce bir çerçeve
+          side: BorderSide(color: Colors.white.withAlpha((0.05 * 255).round()), width: 1), // İnce bir çerçeve
         ),
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       ),
@@ -111,7 +111,7 @@ class AppTheme {
       // Alt Menü (Bottom Navigation)
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: darkBackground,
-        indicatorColor: neonCyan.withOpacity(0.2),
+        indicatorColor: neonCyan.withAlpha((0.2 * 255).round()),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -157,7 +157,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.1),
+        shadowColor: Colors.black.withAlpha((0.1 * 255).round()),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: Colors.grey.shade200, width: 1),
@@ -210,7 +210,7 @@ class AppTheme {
       
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
-        indicatorColor: neonCyan.withOpacity(0.3),
+        indicatorColor: neonCyan.withAlpha((0.3 * 255).round()),
         surfaceTintColor: Colors.white,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {

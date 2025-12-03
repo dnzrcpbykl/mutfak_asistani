@@ -18,7 +18,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Map<int, double> _monthlySpending = {}; // AyIndex (1-12) : Tutar
 
   // Seçili Ay Gösterimi (Tıklama için)
-  int? _selectedMonthIndex;
   double? _selectedMonthValue;
 
   bool _isLoading = true;
@@ -153,7 +152,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           // Tıklanan çubuğun değerini alıp aşağıya yazdıracağız
                           setState(() {
                             final spot = barTouchResponse.spot!;
-                            _selectedMonthIndex = spot.touchedBarGroupIndex; 
                             _selectedMonthValue = spot.touchedRodData.toY;
                           });
                         },
@@ -190,7 +188,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       margin: const EdgeInsets.only(top: 10),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: colorScheme.primary.withOpacity(0.1),
+                        color: colorScheme.primary.withAlpha((0.1 * 255).round()),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: colorScheme.primary)
                       ),
@@ -248,7 +246,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: [colorScheme.primary, colorScheme.secondary]),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: colorScheme.primary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: colorScheme.primary.withAlpha((0.3 * 255).round()), blurRadius: 10, offset: const Offset(0, 5))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -267,7 +265,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Colors.white.withAlpha((0.3 * 255).round()), shape: BoxShape.circle),
             child: const Icon(Icons.account_balance_wallet, color: Colors.black, size: 30),
           )
         ],
@@ -299,10 +297,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 color: colorScheme.primary,
                 width: 20, // Çubukları biraz kalınlaştırdım
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                backDrawRodData: BackgroundBarChartRodData(
+                  backDrawRodData: BackgroundBarChartRodData(
                   show: true,
                   toY: _getMaxSpending() * 1.1, // Arka plan gri çubuk
-                  color: Colors.grey.withOpacity(0.1),
+                  color: Colors.grey.withAlpha((0.1 * 255).round()),
                 ),
               )
             ],
@@ -315,12 +313,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   List<PieChartSectionData> _getPieSections() {
     List<PieChartSectionData> sections = [];
-    _categoryDistribution.forEach((cat, count) {
+    _categoryDistribution.forEach((cat, itemCount) {
       sections.add(
         PieChartSectionData(
           color: _getCategoryColor(cat),
-          value: count,
-          title: '${count.toInt()}',
+          value: itemCount,
+          title: '${itemCount.toInt()}',
           radius: 50,
           titleStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
         ),

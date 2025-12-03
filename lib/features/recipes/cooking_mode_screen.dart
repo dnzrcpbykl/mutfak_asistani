@@ -188,10 +188,10 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         content: Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: [1, 5, 10, 15, 20, 30, 45, 60].map((m) {
+            children: [1, 5, 10, 15, 20, 30, 45, 60].map((m) {
             return ActionChip(
               label: Text("$m dk"),
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+              backgroundColor: theme.colorScheme.primary.withAlpha((0.1 * 255).round()),
               onPressed: () {
                 Navigator.pop(context);
                 _startTimer(m);
@@ -260,7 +260,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             if (_isTimerRunning)
               Container(
                 width: double.infinity,
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withAlpha((0.1 * 255).round()),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Center(
                   child: Text(
@@ -274,7 +274,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
             LinearProgressIndicator(
               value: progress,
               color: colorScheme.primary,
-              backgroundColor: colorScheme.onSurface.withOpacity(0.1),
+              backgroundColor: colorScheme.onSurface.withAlpha((0.1 * 255).round()),
               minHeight: 6,
             ),
 
@@ -332,7 +332,7 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
                               icon: Icon(_isSpeaking ? Icons.stop : Icons.record_voice_over),
                               label: Text(_isSpeaking ? "Durdur" : "Sesli Oku"),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: colorScheme.primary.withOpacity(0.1),
+                                backgroundColor: colorScheme.primary.withAlpha((0.1 * 255).round()),
                                 foregroundColor: colorScheme.primary,
                                 padding: const EdgeInsets.symmetric(horizontal: 30),
                               ),

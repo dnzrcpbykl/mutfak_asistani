@@ -98,7 +98,7 @@ class ProfileScreen extends StatelessWidget {
                                 border: Border.all(color: AppTheme.neonCyan, width: 2),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppTheme.neonCyan.withOpacity(isDark ? 0.4 : 0.2), 
+                                    color: AppTheme.neonCyan.withAlpha(((isDark ? 0.4 : 0.2) * 255).round()), 
                                     blurRadius: 15
                                   )
                                 ]
@@ -140,8 +140,8 @@ class ProfileScreen extends StatelessWidget {
                         if (isPremium)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withOpacity(0.2),
+                              decoration: BoxDecoration(
+                              color: Colors.amber.withAlpha((0.2 * 255).round()),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: Colors.amber),
                             ),
@@ -210,7 +210,7 @@ class ProfileScreen extends StatelessWidget {
                       color: tileColor,
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(color: borderColor),
-                      boxShadow: isDark ? [] : [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))]
+                      boxShadow: isDark ? [] : [BoxShadow(color: Colors.grey.withAlpha((0.1 * 255).round()), blurRadius: 5, offset: const Offset(0, 2))]
                     ),
                     child: SwitchListTile(
                       title: Text(
@@ -292,7 +292,7 @@ class ProfileScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         border: Border.all(color: borderColor),
         boxShadow: tileColor == Colors.white 
-            ? [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))]
+            ? [BoxShadow(color: Colors.grey.withAlpha((0.1 * 255).round()), blurRadius: 5, offset: const Offset(0, 2))]
             : []
       ),
       child: ListTile(

@@ -102,8 +102,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int hour = DateTime.now().hour;
     if (hour < 12) {
       greeting = "Günaydın Şef! 🍳";
-    } else if (hour < 18) greeting = "İyi Günler Şef! ☀️";
-    else greeting = "İyi Akşamlar Şef! 🌙";
+    } else if (hour < 18) {
+      greeting = "İyi Günler Şef! ☀️";
+    } else {
+      greeting = "İyi Akşamlar Şef! 🌙";
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -114,7 +117,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: colorScheme.primary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: colorScheme.primary.withAlpha((0.3 * 255).round()), blurRadius: 10, offset: const Offset(0, 5))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -174,13 +177,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }).toList();
 
         if (expiringItems.isEmpty) {
-          return Container(
+            return Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: Colors.green.withAlpha((0.1 * 255).round()),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.green.withOpacity(0.3))
+              border: Border.all(color: Colors.green.withAlpha((0.3 * 255).round()))
             ),
             child: const Row(
               children: [
@@ -202,15 +205,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final daysLeft = item.expirationDate!.difference(now).inDays;
               final isExpired = daysLeft < 0;
 
-              return Container(
+                return Container(
                 width: 140,
                 margin: const EdgeInsets.only(right: 12),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isExpired ? Colors.red.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isExpired ? Colors.red : Colors.orange),
-                ),
+                  decoration: BoxDecoration(
+                    color: isExpired ? Colors.red.withAlpha((0.1 * 255).round()) : Colors.orange.withAlpha((0.1 * 255).round()),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: isExpired ? Colors.red : Colors.orange),
+                  ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -304,14 +307,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.3)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+          border: Border.all(color: color.withAlpha((0.3 * 255).round())),
+          boxShadow: [BoxShadow(color: Colors.black.withAlpha((0.05 * 255).round()), blurRadius: 5)]
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircleAvatar(
-              backgroundColor: color.withOpacity(0.1),
+              backgroundColor: color.withAlpha((0.1 * 255).round()),
               child: Icon(icon, color: color),
             ),
             const SizedBox(height: 10),
@@ -328,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: Colors.grey.withAlpha((0.2 * 255).round())),
       ),
       child: Row(
         children: [
@@ -340,7 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 const Text("Günün Tüyosu", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber)),
                 const SizedBox(height: 4),
-                Text(_getDailyTip(), style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.8))),
+                Text(_getDailyTip(), style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withAlpha((0.8 * 255).round()))),
               ],
             ),
           ),

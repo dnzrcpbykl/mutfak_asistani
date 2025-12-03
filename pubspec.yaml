@@ -36,6 +36,7 @@ dependencies:
   google_mobile_ads: ^6.0.0
   pdf: ^3.11.3
   printing: ^5.13.1
+  flutter_tts: ^4.0.2
 
 dev_dependencies:
   flutter_test:
@@ -43,7 +44,6 @@ dev_dependencies:
   flutter_lints: ^3.0.0 # Lint versiyonunu güncelledim
   flutter_launcher_icons: ^0.13.1
   flutter_native_splash: ^2.3.10 # splash paketi
-  flutter_tts: ^4.0.2
 
 # flutter_launcher_icons ve flutter_native_splash konfigürasyonları buraya
 # dev_dependencies bloğunun dışına, ama ana seviyeye geliyor.
