@@ -12,6 +12,7 @@ import 'core/theme/theme_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/legal/legal_warning_screen.dart'; // YASAL UYARI EKRANI IMPORTU
+import 'features/home/weather_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeNotifier(isDarkMode)),
         ChangeNotifierProvider(create: (_) => RecipeProvider()),
+        ChangeNotifierProvider(create: (_) => WeatherProvider()),
       ],
       // 2. Değerleri ana widget'a gönderiyoruz
       child: MutfakAsistaniApp(

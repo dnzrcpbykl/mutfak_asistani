@@ -80,7 +80,7 @@ class WeatherService {
   }
 
   // Havaya Göre Şefin Tavsiyesi
-  String getSuggestion(String mainCondition, int temp) {
+    static String getSuggestion(String mainCondition, int temp) {
     // Önce sıcaklığa bak
     if (temp < 5) return "Brrr! Hava buz gibi ❄️ Fırını çalıştırıp evi ısıtacak bir yemek yap.";
     if (temp < 12) return "Serin bir gün 🧣 Sıcak bir çorba veya güveç harika gider.";

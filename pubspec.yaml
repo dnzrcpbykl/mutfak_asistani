@@ -67,6 +67,7 @@ flutter_native_splash:
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/
     - assets/markets/ # .env dosyasının buraya eklenmesi önemli!
   # Eğer başka asset'ler ekleyeceksen buraya ekleyebilirsin

@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import '../recipes/recipe_recommendation_screen.dart';
 import '../profile/profile_screen.dart';
-import 'dashboard_screen.dart'; // EKLENDİ
+import 'dashboard_screen.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
-
   @override
   State<MainLayout> createState() => _MainLayoutState();
 }
@@ -14,25 +13,37 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
 
-  // Sayfa değiştirme fonksiyonu (Dashboard'dan erişmek için)
+  // Sayfa değiştirme fonksiyonu
   void _changeTab(int index) {
     setState(() {
       _currentIndex = index;
     });
   }
 
+  // Sayfaları buraya tanımlıyoruz
+  late List<Widget> _pages;
+
   @override
-  Widget build(BuildContext context) {
-    // Sayfaları build metodunun içinde tanımlıyoruz ki context ve fonksiyonlara erişebilsinler
-    final List<Widget> pages = [
+  void initState() {
+    super.initState();
+    // Sayfaları bir kere oluşturuyoruz
+    _pages = [
       DashboardScreen(onTabChange: _changeTab), // 0: Ana Sayfa
       const HomeScreen(),                       // 1: Kiler & Alışveriş
       const RecipeRecommendationScreen(),       // 2: Şef
       const ProfileScreen(),                    // 3: Profil
     ];
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: pages[_currentIndex],
+      // ESKİ KOD: body: _pages[_currentIndex],
+      // YENİ KOD: IndexedStack (Sayfaları hafızada tutar)
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
       
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

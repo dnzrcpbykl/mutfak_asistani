@@ -84,22 +84,26 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
     return steps;
   }
 
-  // --- TTS ---
   Future<void> _initTts() async {
     try {
-      // Dil ayarı
-      await _flutterTts.setLanguage("tr-TR");
-      
-      // Ses özellikleri
+      // Dil ayarı (Hata alırsa varsayılana dön)
+      var langCheck = await _flutterTts.isLanguageAvailable("tr-TR");
+      if (langCheck) {
+        await _flutterTts.setLanguage("tr-TR");
+      } else {
+        await _flutterTts.setLanguage("en-US"); // Yedek dil
+      }
+
       await _flutterTts.setSpeechRate(0.5);
       await _flutterTts.setVolume(1.0);
       await _flutterTts.setPitch(1.0);
 
-      // iOS Ses Kategorisi
       if (Platform.isIOS) {
+        // iOS için kritik ayar: Sessiz modda bile sesi aç
         await _flutterTts.setIosAudioCategory(
-            IosTextToSpeechAudioCategory.playback,
+            IosTextToSpeechAudioCategory.playAndRecord,
             [
+              IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
               IosTextToSpeechAudioCategoryOptions.allowBluetooth,
               IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
               IosTextToSpeechAudioCategoryOptions.mixWithOthers
@@ -108,9 +112,9 @@ class _CookingModeScreenState extends State<CookingModeScreen> {
         );
       }
 
-      // 'awaitSpeakCompletion' Android'de bazen sorun çıkarabilir, 
-      // çalışmazsa bu satırı yorum satırına almayı dene.
-      await _flutterTts.awaitSpeakCompletion(true);
+      // BU SATIRI SİLDİK/YORUMA ALDIK. 
+      // await _flutterTts.awaitSpeakCompletion(true); 
+      // (Gerçek cihazlarda kilitlenmeye sebep olan kod buydu)
 
       _flutterTts.setStartHandler(() {
         if (mounted) setState(() => _isSpeaking = true);

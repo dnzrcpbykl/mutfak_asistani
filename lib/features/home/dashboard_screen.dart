@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Tarih formatı için
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
 import 'package:mutfak_asistani/features/home/home_screen.dart';
 import 'package:mutfak_asistani/features/profile/statistics_screen.dart';
-// RecipeProvider erişimi için
 import '../pantry/pantry_service.dart';
 import '../../core/models/pantry_item.dart';
-import 'weather_service.dart';
-// Sayfa geçişleri için (Tab değişimi)
 import '../pantry/add_pantry_item_screen.dart';
 
+// YENİ EKLENEN PROVIDER VE SERVICE
+import 'weather_provider.dart';
+import 'weather_service.dart'; // Statik metoda erişim için gerekli
+
 class DashboardScreen extends StatefulWidget {
-  final Function(int) onTabChange; // Sayfa değiştirmek için callback
+  final Function(int) onTabChange;
 
   const DashboardScreen({super.key, required this.onTabChange});
 
@@ -19,26 +22,16 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final WeatherService _weatherService = WeatherService();
   final PantryService _pantryService = PantryService();
-  
-  Map<String, dynamic>? _weatherData;
-  bool _loadingWeather = true;
 
   @override
   void initState() {
     super.initState();
-    _loadWeather();
-  }
-
-  Future<void> _loadWeather() async {
-    final data = await _weatherService.getWeather();
-    if (mounted) {
-      setState(() {
-        _weatherData = data;
-        _loadingWeather = false;
-      });
-    }
+    // Ekran açıldığında Provider'a "Veri lazımsa çek" diyoruz.
+    // listen: false dememiz önemli, çünkü initState içinde UI çizemeyiz.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<WeatherProvider>(context, listen: false).fetchWeather();
+    });
   }
 
   // Günün Tüyosu (Güne göre sabit değişir)
@@ -59,7 +52,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+    // Provider'ı dinlemeye başla (UI değişikliklerini yakalamak için)
+    final weatherProvider = Provider.of<WeatherProvider>(context);
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -68,7 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. HEADER (SELAMLAMA & HAVA DURUMU)
-              _buildHeader(colorScheme),
+              _buildHeader(colorScheme, weatherProvider),
               
               const SizedBox(height: 24),
               
@@ -97,7 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildHeader(ColorScheme colorScheme) {
+  Widget _buildHeader(ColorScheme colorScheme, WeatherProvider weatherProvider) {
     String greeting = "Merhaba Şef! 👋";
     int hour = DateTime.now().hour;
     if (hour < 12) {
@@ -107,6 +102,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       greeting = "İyi Akşamlar Şef! 🌙";
     }
+
+    // Verileri Provider'dan alıyoruz
+    final weatherData = weatherProvider.weatherData;
+    final loading = weatherProvider.isLoading;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -128,19 +127,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Text(greeting, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
                 const SizedBox(height: 8),
-                if (_loadingWeather)
+                
+                // Provider Durum Kontrolleri
+                if (loading)
                   const Text("Hava durumu alınıyor...", style: TextStyle(color: Colors.black54, fontSize: 12))
-                else if (_weatherData != null && _weatherData!['success'] == true)
+                else if (weatherData != null && weatherData['success'] == true)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "${_weatherData!['city']}: ${_weatherData!['temp']}°C, ${_weatherData!['description']}", 
+                        "${weatherData['city']}: ${weatherData['temp']}°C, ${weatherData['description']}", 
                         style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _weatherService.getSuggestion(_weatherData!['main'], _weatherData!['temp']),
+                        // WeatherService içindeki metodu static yaptıysan böyle çağırabilirsin.
+                        // Yapmadıysan: WeatherService().getSuggestion(...)
+                        WeatherService.getSuggestion(weatherData['main'], weatherData['temp']),
                         style: const TextStyle(color: Colors.black54, fontSize: 13, fontStyle: FontStyle.italic),
                       ),
                     ],
@@ -150,10 +153,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          // Hava Durumu İkonu (Basit)
-          if (!_loadingWeather && _weatherData != null)
+        
+          // Hava Durumu İkonu
+          if (!loading && weatherData != null)
             Icon(
-              _weatherData!['main'].toString().toLowerCase().contains('rain') ? Icons.thunderstorm : Icons.wb_sunny,
+              weatherData['main'].toString().toLowerCase().contains('rain') ? Icons.thunderstorm : Icons.wb_sunny,
               size: 40,
               color: Colors.black87,
             )
@@ -284,7 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // 1. Önce Kilerim Sayfasını Aç (Index 1)
             widget.onTabChange(1);
             // 2. Sonra o sayfaya "Alışveriş Listesi sekmesine (Index 1) geç" sinyali gönder
-            HomeScreen.tabChangeNotifier.value = 1; 
+            HomeScreen.tabChangeNotifier.value = 1;
           }
         ),
         _buildActionCard(
