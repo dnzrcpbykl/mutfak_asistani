@@ -51,5 +51,36 @@
 		<string>Barkod ve fiş taramak için kamera izni gereklidir.</string>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.googleusercontent.apps.855422447946-7dql4v2cubo48nrduqv2tsf8krugc8o0</string>
+				</array>
+			</dict>
+		</array>		
+		<key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>1265704215428950</string>
+      </array>
+      </dict>
+    </array>
+    <key>FacebookAppID</key>
+    <string>1265704215428950</string>
+    <key>FacebookClientToken</key>
+    <string>5e67600bd579a355febdfc9733390e97</string>
+    <key>FacebookDisplayName</key>
+    <string>Mutfak Asistanı</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>fbapi</string>
+      <string>fb-messenger-share-api</string>
+    </array>
 	</dict>
 </plist>

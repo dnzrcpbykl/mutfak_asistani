@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/legal/legal_warning_screen.dart'; // YASAL UYARI EKRANI IMPORTU
 import 'features/home/weather_provider.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +70,16 @@ class MutfakAsistaniApp extends StatelessWidget {
     return MaterialApp(
       title: 'Mutfak Asistanı',
       debugShowCheckedModeBanner: false,
+
+      
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('tr', 'TR'), // Türkçe desteği
+      ],
       
       theme: AppTheme.lightTheme, 
       darkTheme: AppTheme.darkTheme,
