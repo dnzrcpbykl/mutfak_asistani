@@ -6,23 +6,29 @@ class AdService {
   RewardedAd? _rewardedAd;
   bool _isAdLoaded = false;
 
-  // Test Reklam Kimlikleri (Google'ın verdiği test ID'leri)
-  final String _adUnitId = Platform.isAndroid
-      ? 'ca-app-pub-3940256099942544/5224354917' // Android Test ID
-      : 'ca-app-pub-3940256099942544/1712485313'; // iOS Test ID
+  // TEST ID'leri (Sabit)
+  final String _rewardedAdUnitId = Platform.isAndroid
+      ? 'ca-app-pub-3940256099942544/5224354917' 
+      : 'ca-app-pub-3940256099942544/1712485313';
 
+  final String _bannerAdUnitId = Platform.isAndroid
+      ? 'ca-app-pub-3940256099942544/6300978111' // Android Test Banner
+      : 'ca-app-pub-3940256099942544/2934735716'; // iOS Test Banner
+
+  // --- MEVCUT REWARDED AD KODLARI (AYNEN KALIYOR) ---
   void loadRewardedAd() {
+    // ... (Eski kodlarınız burada duracak) ...
     RewardedAd.load(
-      adUnitId: _adUnitId,
+      adUnitId: _rewardedAdUnitId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          debugPrint("✅ Reklam Yüklendi!");
+          debugPrint("✅ Ödüllü Reklam Yüklendi!");
           _rewardedAd = ad;
           _isAdLoaded = true;
         },
         onAdFailedToLoad: (error) {
-          debugPrint("❌ Reklam Yüklenemedi: $error");
+          debugPrint("❌ Ödüllü Reklam Yüklenemedi: $error");
           _isAdLoaded = false;
           _rewardedAd = null;
         },
@@ -31,30 +37,63 @@ class AdService {
   }
 
   void showRewardedAd({required VoidCallback onRewardEarned}) {
-    if (_rewardedAd != null && _isAdLoaded) {
+     // ... (Eski kodlarınız burada duracak) ...
+     if (_rewardedAd != null && _isAdLoaded) {
       _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
-          loadRewardedAd(); // Bir sonraki için yenisini yükle
+          loadRewardedAd(); 
         },
         onAdFailedToShowFullScreenContent: (ad, err) {
           ad.dispose();
-          // Reklam gösterilemediyse de kullanıcıyı mağdur etme, ödülü ver
           onRewardEarned(); 
           loadRewardedAd();
         },
       );
-
       _rewardedAd!.show(
         onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-          // Kullanıcı reklamı sonuna kadar izledi!
           onRewardEarned();
         },
       );
     } else {
       debugPrint("⚠️ Reklam hazır değil, direkt geçiş veriliyor.");
-      onRewardEarned(); // Reklam yüklenmediyse beklemesin, geçsin
+      onRewardEarned();
       loadRewardedAd();
     }
+  }
+
+  // --- YENİ EKLENEN: BANNER REKLAM ÜRETİCİ ---
+  // Bu fonksiyon her çağrıldığında yeni bir Banner nesnesi yaratır.
+  BannerAd createBannerAd({required Function() onAdLoaded}) {
+    return BannerAd(
+      adUnitId: _bannerAdUnitId,
+      size: AdSize.banner, // Standart boyut (320x50)
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          debugPrint("Banner reklam yüklendi.");
+          onAdLoaded();
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint("Banner reklam hatası: $error");
+          ad.dispose();
+        },
+      ),
+    );
+  }
+  
+  // Liste içi için "Medium Rectangle" (Kareye yakın) reklam daha iyi durur
+  BannerAd createInlineAd({required Function() onAdLoaded}) {
+    return BannerAd(
+      adUnitId: _bannerAdUnitId, // Test için aynı ID kullanılır
+      size: AdSize.mediumRectangle, // 300x250 boyutunda büyük kart reklam
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) => onAdLoaded(),
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+        },
+      ),
+    );
   }
 }

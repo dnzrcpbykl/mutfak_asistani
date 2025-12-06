@@ -201,7 +201,7 @@ class PantryService {
     });
   }
 
-  // --- MASTER SEVİYE STOK DÜŞME (TOKEN-BASED MATCHING - DÜZELTİLDİ) ---
+  // --- GÜNCELLENEN AKILLI STOK DÜŞME (Optimizasyonlu) ---
   Future<List<String>> consumeIngredientsSmart(List<String> recipeIngredients) async {
     final ref = await getPantryCollection();
     final pantrySnapshot = await ref.get();
@@ -209,7 +209,7 @@ class PantryService {
     
     List<String> logs = [];
 
-    // GENİŞLETİLMİŞ EŞ ANLAMLI SÖZLÜĞÜ
+    // Eş anlamlılar sözlüğü
     final Map<String, List<String>> synonyms = {
       'sıvı yağ': ['ayçiçek', 'mısır özü', 'kanola', 'kızartma yağı', 'zeytinyağı'],
       'ayçiçek yağı': ['sıvı yağ', 'yudum', 'biryağ', 'orkide'],
@@ -225,60 +225,49 @@ class PantryService {
     };
 
     for (String recipeLine in recipeIngredients) {
-      // 1. Tarif Analizi
       final parsedRecipe = UnitUtils.parseAmount(recipeLine);
       double neededQty = parsedRecipe['amount'];
       String neededUnit = parsedRecipe['unit'];
       
-      // İsmi Temizle ve Parçala (Tokenize)
-      // DÜZELTME BURADA: Değişken adı 'cleanRecipeName'
+      // Temizleme ve Tokenize işlemi
       String cleanRecipeName = recipeLine.toLowerCase()
           .replaceAll(RegExp(r'\d+'), '')
           .replaceAll(RegExp(r'(gr|gram|kg|kilogram|lt|litre|ml|mililitre|adet|tane|kaşık|bardak|paket|yemek|çay|tatlı|su)'), '')
           .replaceAll(RegExp(r'[^\w\sğüşıöçĞÜŞİÖÇ]'), '')
           .trim();
-      
+
       List<String> recipeTokens = cleanRecipeName.split(' ').where((s) => s.length > 2).toList(); 
 
       bool found = false;
-
-      // 2. Kilerde Arama (Akıllı Skorlama)
       PantryItem? bestMatchItem;
       int bestScore = 0;
 
+      // Kilerde en iyi eşleşmeyi bul
       for (var item in pantryItems) {
          String pantryName = item.ingredientName.toLowerCase();
          int score = 0;
 
-         // A) Kelime Eşleşmesi (Skorlama)
          for (var token in recipeTokens) {
-           if (pantryName.contains(token)) {
-             score += 2; // Tam eşleşme puanı
-           }
+           if (pantryName.contains(token)) score += 2;
          }
 
-         // B) Eş Anlamlı Kontrolü
          if (synonyms.containsKey(cleanRecipeName)) {
            for (var synonym in synonyms[cleanRecipeName]!) {
-             if (pantryName.contains(synonym)) {
-               score += 1; // Eş anlamlı puanı
-             }
+             if (pantryName.contains(synonym)) score += 1;
            }
          }
 
-         // Eğer skor yeterliyse adayı kaydet
          if (score > bestScore) {
            bestScore = score;
            bestMatchItem = item;
          }
       }
 
-      // Eşleşme bulunduysa işleme başla
       if (bestMatchItem != null && bestScore > 0) {
           found = true;
           var itemToUpdate = bestMatchItem;
 
-            // --- DEDEKTİF MODU (Gizli Miktar Tespiti) ---
+            // DEDEKTİF MODU (Gizli Miktar Tespiti - Örn: "1 paket makarna" denmiş ama kilerde "500 gr" var)
             if ((['adet', 'paket', 'kutu', 'kavanoz', 'şişe'].contains(itemToUpdate.unit)) && 
                 (['lt', 'l', 'ml', 'kg', 'gr', 'g', 'kaşık', 'bardak'].contains(neededUnit))) {
                 
@@ -294,14 +283,15 @@ class PantryService {
                   double neededRealAmount = UnitUtils.convertToBaseUnit(neededQty, neededUnit); 
                   
                   double remainingBase = totalRealAmount - neededRealAmount;
-                  
+
                   if (remainingBase > 0) {
                     double onePackBase = UnitUtils.convertToBaseUnit(hiddenAmount, hiddenUnit);
                     double newAdet = remainingBase / onePackBase;
-
-                    await updatePantryItemQuantity(itemToUpdate.id, newAdet);
-                    logs.add("📉 ${itemToUpdate.ingredientName}: ${newAdet.toStringAsFixed(2)} adet kaldı (Hacim hesabı).");
-                    continue; 
+                    
+                    // Burada paket sayısı zaten quantity olduğu için doğrudan güncelliyoruz
+                    await updatePantryItemQuantity(itemToUpdate.id, newAdet, newPieceCount: newAdet.ceil());
+                    logs.add("📉 ${itemToUpdate.ingredientName}: ${newAdet.toStringAsFixed(2)} adet kaldı.");
+                    continue;
                   } else {
                      await deletePantryItem(itemToUpdate.id);
                      logs.add("✅ ${itemToUpdate.ingredientName}: Tükendi.");
@@ -309,9 +299,8 @@ class PantryService {
                   }
                 }
             }
-            // ---------------------
-
-            // 3. Normal Hesaplama
+            
+            // NORMAL HESAPLAMA VE OPTİMİZASYON
             double? newQuantity = UnitUtils.tryDeduct(
               itemToUpdate.quantity, 
               itemToUpdate.unit, 
@@ -324,12 +313,29 @@ class PantryService {
                 await deletePantryItem(itemToUpdate.id);
                 logs.add("✅ ${itemToUpdate.ingredientName}: Tükendi.");
               } else {
-                await updatePantryItemQuantity(itemToUpdate.id, newQuantity);
+                // --- OPTİMİZASYON BAŞLANGICI ---
+                // Miktar düştükçe paket sayısını da orantılı düşür (Yukarı yuvarla)
+                int newPieceCount = itemToUpdate.pieceCount;
+                
+                if (itemToUpdate.pieceCount > 1 && itemToUpdate.quantity > 0) {
+                  // Oran: Yeni Miktar / Eski Miktar
+                  double ratio = newQuantity / itemToUpdate.quantity;
+                  // Yeni Paket Sayısı = Eski Paket * Oran (Yukarı yuvarla, çünkü yarım paket de olsa 1 pakettir)
+                  newPieceCount = (itemToUpdate.pieceCount * ratio).ceil();
+                  
+                  // Ürün bitmediyse en az 1 paket kalsın
+                  if (newPieceCount < 1) newPieceCount = 1;
+                }
+                // --- OPTİMİZASYON SONU ---
+
+                await updatePantryItemQuantity(itemToUpdate.id, newQuantity, newPieceCount: newPieceCount);
                 logs.add("📉 ${itemToUpdate.ingredientName}: ${newQuantity.toStringAsFixed(2)} ${itemToUpdate.unit} kaldı.");
               }
             } else {
+               // Birim dönüştürülemediyse (örn: Adet vs Kg), basitçe 1 adet düş
                if(itemToUpdate.quantity >= 1) {
-                  await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1);
+                  int newPiece = itemToUpdate.pieceCount > 1 ? itemToUpdate.pieceCount - 1 : 1;
+                  await updatePantryItemQuantity(itemToUpdate.id, itemToUpdate.quantity - 1, newPieceCount: newPiece);
                   logs.add("⚠️ ${itemToUpdate.ingredientName}: Birim farklı, 1 adet düşüldü.");
                } else {
                   logs.add("❌ ${itemToUpdate.ingredientName}: Stok yetersiz veya birim hatası (${itemToUpdate.unit} vs $neededUnit).");
@@ -337,9 +343,7 @@ class PantryService {
             }
       }
       
-      // Hiçbir eşleşme olmadıysa
       if (!found) {
-         // DÜZELTİLEN YER BURASI: Artık 'cleanRecipeName' kullanıyoruz
          logs.add("❌ '$cleanRecipeName' kilerde bulunamadı.");
       }
     }

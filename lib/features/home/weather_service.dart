@@ -39,7 +39,7 @@ class WeatherService {
       
       // WeatherAPI.com Endpoint (lang=tr ile Türkçe veri çekiyoruz)
       final url = Uri.parse(
-          'http://api.weatherapi.com/v1/current.json?key=$apiKey&q=${position.latitude},${position.longitude}&lang=tr');
+          'https://api.weatherapi.com/v1/current.json?key=$apiKey&q=${position.latitude},${position.longitude}&lang=tr');
       
       final response = await http.get(url);
 

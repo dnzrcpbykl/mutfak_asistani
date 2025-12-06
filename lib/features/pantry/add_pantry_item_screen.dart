@@ -3,8 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; 
-
 import '../../core/models/ingredient.dart';
 import '../../core/models/pantry_item.dart';
 import 'pantry_service.dart';
@@ -14,126 +12,45 @@ import '../ocr/scanned_products_screen.dart';
 
 class AddPantryItemScreen extends StatefulWidget {
   const AddPantryItemScreen({super.key});
-
   @override
   State<AddPantryItemScreen> createState() => _AddPantryItemScreenState();
 }
 
 class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _quantityController = TextEditingController();
+  
+  // Kontrolcüler
   final _ingredientNameController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _pieceCountController = TextEditingController(text: "1"); // Varsayılan 1 Paket
+  final _priceController = TextEditingController(); // Fiyat için yeni kontrolcü
+
+  // Değişkenler
   DateTime? _selectedExpirationDate;
+  String _selectedUnit = 'adet'; // Varsayılan birim
+  
+  // Standart Birim Listesi
+  final List<String> _unitList = [
+    'adet', 'kg', 'gr', 'lt', 'ml', 'paket', 'kavanoz', 'bardak', 'demet', 'dilim', 'kaşık', 'kutu'
+  ];
 
   List<Ingredient> _searchResults = [];
   Ingredient? _selectedIngredient;
 
   final PantryService _pantryService = PantryService();
   final OCRService _ocrService = OCRService();
+  // ignore: unused_field
   final BarcodeService _barcodeService = BarcodeService(); 
   
   bool _isLoading = false;
 
-  // ignore: unused_element
-  Future<void> _scanBarcode() async {
-    final String? scannedCode = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(title: const Text("Barkodu Okut"), backgroundColor: Colors.black),
-          body: MobileScanner(
-            controller: MobileScannerController(
-              detectionSpeed: DetectionSpeed.noDuplicates,
-              returnImage: false,
-            ),
-            onDetect: (capture) {
-              final List<Barcode> barcodes = capture.barcodes;
-              if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                Navigator.pop(context, barcodes.first.rawValue);
-              }
-            },
-          ),
-        ),
-      ),
-    );
-
-    if (scannedCode != null) {
-      setState(() => _isLoading = true);
-      // ignore: use_build_context_synchronously
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün aranıyor...")));
-      
-      final productName = await _barcodeService.findProduct(scannedCode);
-      setState(() => _isLoading = false);
-
-      if (productName != null && productName.isNotEmpty) {
-        setState(() {
-           _ingredientNameController.text = productName;
-        });
-        _searchIngredients(productName); 
-        // ignore: use_build_context_synchronously
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Bulundu: $productName"), backgroundColor: Colors.green));
-      } else {
-        _showAddProductDialog(scannedCode);
-      }
-    }
-  }
-
-  void _showAddProductDialog(String barcode) {
-    final nameController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Ürün Bulunamadı 😔"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Bu ürünü veritabanımızda ilk gören sensin!"),
-            const SizedBox(height: 8),
-            const Text("Adını yazıp kaydedersen, bu barkod veritabanımıza eklenecek.", style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 15),
-            TextField(
-              controller: nameController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: "Örn: Eti Burçak",
-                labelText: "Ürün Adı Giriniz",
-                border: OutlineInputBorder()
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
-          
-          ElevatedButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              if (name.isNotEmpty) {
-                await _barcodeService.contributeToPool(barcode, name);
-                
-                setState(() {
-                  _ingredientNameController.text = name;
-                });
-                if (mounted) {
-                  // ignore: use_build_context_synchronously
-                  Navigator.pop(context);
-                  // ignore: use_build_context_synchronously
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Harika! Ürün veritabanımıza kaydedildi."),
-                      backgroundColor: Colors.green,
-                    )
-                  );
-                }
-              }
-            },
-            child: const Text("Kaydet ve Paylaş"),
-          ),
-        ],
-      ),
-    );
+  @override
+  void dispose() {
+    _ingredientNameController.dispose();
+    _quantityController.dispose();
+    _pieceCountController.dispose();
+    _priceController.dispose();
+    super.dispose();
   }
 
   void _searchIngredients(String query) async {
@@ -158,17 +75,15 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
   }
 
   Future<void> _addItemToPantry() async {
-    // KLAVYEYİ KAPAT (UX İyileştirmesi)
-    FocusScope.of(context).unfocus(); 
-
+    FocusScope.of(context).unfocus();
     if (_formKey.currentState!.validate()) {
       String ingredientId = _selectedIngredient?.id ?? '';
       String ingredientName = _ingredientNameController.text.trim();
-      String unit = _selectedIngredient?.unit ?? 'adet';
+      String unit = _selectedUnit; 
 
       if (ingredientName.isEmpty) {
          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen bir malzeme ismi girin.")));
-        return;
+         return;
       }
 
       setState(() => _isLoading = true);
@@ -178,22 +93,38 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
 
         String category = _selectedIngredient?.category ?? 'Diğer';
         
+        // Sayısal Dönüşümler
+        double quantity = double.parse(_quantityController.text.replaceAll(',', '.'));
+        int pieces = int.tryParse(_pieceCountController.text) ?? 1;
+        double price = 0.0;
+        
+        if (_priceController.text.isNotEmpty) {
+          price = double.tryParse(_priceController.text.replaceAll(',', '.')) ?? 0.0;
+        }
+
         final newItem = PantryItem(
           id: '',
           userId: currentUser.uid,
           ingredientId: ingredientId,
           ingredientName: ingredientName,
-          quantity: double.parse(_quantityController.text),
+          quantity: quantity,
           unit: unit,
           expirationDate: _selectedExpirationDate,
           createdAt: Timestamp.now(),
-          category: category
+          category: category,
+          pieceCount: pieces, // Girilen paket sayısı
+          price: price, // Girilen fiyat (Harcamalara yansıyacak)
         );
 
         await _pantryService.addPantryItem(newItem);
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ürün kiler'e başarıyla eklendi!")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Ürün kaydedildi ve harcamalara eklendi! ✅"), 
+            backgroundColor: Colors.green
+          )
+        );
         Navigator.of(context).pop();
 
       } catch (e) {
@@ -203,6 +134,44 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
         if (context.mounted) setState(() => _isLoading = false);
       }
     }
+  }
+
+  // --- Resim Kaynağı Seçimi (Kamera/Galeri) ---
+  void _showImageSourceSheet() {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Fiş Yükleme Yöntemi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.blue),
+                title: const Text("Kamera"),
+                onTap: () { 
+                  Navigator.pop(context); 
+                  _processImage(ImageSource.camera); 
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.purple),
+                title: const Text("Galeri"),
+                onTap: () { 
+                  Navigator.pop(context);
+                  _processImage(ImageSource.gallery); 
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _processImage(ImageSource source) async {
@@ -226,12 +195,10 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
           ),
         ),
       );
-      
       try {
         final scannedData = await _ocrService.textToIngredients(imagePath);
         if (mounted) Navigator.of(context).pop();
         if (!mounted) return;
-
         if (scannedData.isNotEmpty && scannedData['items'] != null && (scannedData['items'] as List).isNotEmpty) {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -252,37 +219,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
     }
   }
 
-  void _showImageSourceSheet() {
-    final colorScheme = Theme.of(context).colorScheme;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).cardTheme.color,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("Fiş Yükleme Yöntemi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.blue),
-                title: const Text("Kamera"),
-                onTap: () { Navigator.pop(context); _processImage(ImageSource.camera); },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.purple),
-                title: const Text("Galeri"),
-                onTap: () { Navigator.pop(context); _processImage(ImageSource.gallery); },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -298,9 +234,10 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
+                    // --- ÜST BUTONLAR ---
                     Row(
                       children: [
-                        Expanded(
+                          Expanded(
                           child: ElevatedButton.icon(
                             onPressed: _showImageSourceSheet,
                             icon: const Icon(Icons.receipt_long),
@@ -315,9 +252,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            // onPressed: _scanBarcode, // ESKİ KOD: Kamerayı açıyordu
-                            
-                            // YENİ KOD: Uyarı veriyor
                             onPressed: () {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -330,7 +264,6 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                             icon: const Icon(Icons.qr_code_2),
                             label: const Text("Barkod"),
                             style: ElevatedButton.styleFrom(
-                              // RENK DEĞİŞİMİ: Mavi yerine Gri (Pasif Görünüm)
                               backgroundColor: Colors.grey.shade300, 
                               foregroundColor: Colors.grey.shade700, 
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -341,6 +274,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                     ),
                     const SizedBox(height: 20),
 
+                    // --- İSİM GİRİŞİ ---
                     TextFormField(
                       controller: _ingredientNameController,
                       style: TextStyle(color: colorScheme.onSurface),
@@ -355,6 +289,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                                     _ingredientNameController.clear();
                                     _selectedIngredient = null;
                                     _searchResults = [];
+                                    _selectedUnit = 'adet';
                                   });
                                 },
                               )
@@ -364,6 +299,7 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                       validator: (value) => value!.isEmpty ? "Lütfen malzeme adını girin." : null,
                     ),
 
+                    // Arama Sonuçları Listesi
                     if (_searchResults.isNotEmpty && _selectedIngredient == null)
                       Container(
                         height: 150,
@@ -385,6 +321,12 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                                   _selectedIngredient = ingredient;
                                   _ingredientNameController.text = ingredient.name;
                                   _searchResults = [];
+                                  
+                                  if (_unitList.contains(ingredient.unit)) {
+                                    _selectedUnit = ingredient.unit;
+                                  } else {
+                                    _selectedUnit = 'adet';
+                                  }
                                 });
                               },
                             );
@@ -392,8 +334,9 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                         ),
                       ),
                     
+                    // Yeni Malzeme Ekle Butonu
                     if (_ingredientNameController.text.isNotEmpty && _selectedIngredient == null && _searchResults.isEmpty)
-                       Padding(
+                        Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
                         child: ElevatedButton.icon(
                           onPressed: () async {
@@ -416,19 +359,94 @@ class _AddPantryItemScreenState extends State<AddPantryItemScreen> {
                       ),
                     
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _quantityController,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: colorScheme.onSurface),
-                      decoration: InputDecoration(
-                        labelText: "Miktar (${_selectedIngredient?.unit ?? 'adet'})",
-                        prefixIcon: const Icon(Icons.numbers),
-                      ),
-                      validator: (value) => value!.isEmpty ? "Lütfen miktarı girin." : null,
+
+                    // --- SATIR 1: MİKTAR VE BİRİM ---
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // MİKTAR
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _quantityController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: TextStyle(color: colorScheme.onSurface),
+                            decoration: const InputDecoration(
+                              labelText: "Miktar",
+                              hintText: "1.5",
+                              prefixIcon: Icon(Icons.numbers),
+                            ),
+                            validator: (value) => value!.isEmpty ? "Giriniz" : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // BİRİM
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _selectedUnit,
+                            decoration: const InputDecoration(
+                              labelText: "Birim",
+                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: _unitList.map((String unit) {
+                              return DropdownMenuItem(
+                                value: unit,
+                                child: Text(unit),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedUnit = val);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    
+                    const SizedBox(height: 16),
+
+                    // --- SATIR 2: PAKET SAYISI VE FİYAT (YENİ) ---
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // PAKET SAYISI
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _pieceCountController,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: colorScheme.onSurface),
+                            decoration: const InputDecoration(
+                              labelText: "Paket Sayısı",
+                              hintText: "1",
+                              prefixIcon: Icon(Icons.layers),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // FİYAT
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _priceController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: TextStyle(color: colorScheme.onSurface),
+                            decoration: const InputDecoration(
+                              labelText: "Fiyat (TL)",
+                              hintText: "0.0",
+                              prefixIcon: Icon(Icons.currency_lira),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
                 
+                    // TARİH SEÇİMİ
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(

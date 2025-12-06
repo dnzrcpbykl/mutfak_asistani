@@ -175,8 +175,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final now = DateTime.now();
         // 3 gün veya daha az kalanları filtrele
         final expiringItems = snapshot.data!.where((item) {
-          if (item.expirationDate == null) return false;
-          final diff = item.expirationDate!.difference(now).inDays;
+          // 1. Tarih yoksa bu ürünü "bozulmak üzere" listesine alma
+          final expDate = item.expirationDate;
+          if (expDate == null) return false;
+          final diff = expDate.difference(now).inDays;
           return diff <= 3 && diff >= -5; // Son 3 gün ve tarihi 5 gün geçmiş olanlar
         }).toList();
 

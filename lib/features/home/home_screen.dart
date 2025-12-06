@@ -7,6 +7,9 @@ import '../../core/models/pantry_item.dart';
 import '../shopping_list/shopping_list_view.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/widgets/empty_state_widget.dart';
+// --- REKLAM IMPORTLARI ---
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import '../../core/utils/ad_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -121,6 +124,7 @@ class PantryTab extends StatefulWidget {
 
 class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixin {
   final PantryService _pantryService = PantryService();
+  final AdService _adService = AdService(); // REKLAM SERVİSİ
   late Stream<List<PantryItem>> _pantryStream;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
@@ -137,6 +141,9 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     "Temizlik ve Kişisel Bakım Ürünleri",
     "Diğer"
   ];
+
+  // Reklamları tutacak liste (Cache)
+  final Map<int, BannerAd> _inlineAds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -155,6 +162,10 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
   @override
   void dispose() {
     _searchController.dispose();
+    // Reklamları temizle
+    for (var ad in _inlineAds.values) {
+      ad.dispose();
+    }
     super.dispose();
   }
 
@@ -245,22 +256,64 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
   }
   
   // --- İKON EŞLEŞTİRME (YENİ İSİMLERE GÖRE) ---
-  IconData _getCategoryIcon(String category) {
+  String _getCategoryImagePath(String category) {
     switch (category) {
-      case "Meyve ve Sebze": return Icons.eco;
-      case "Et, Tavuk ve Balık": return Icons.kebab_dining;
-      case "Süt Ürünleri ve Kahvaltılık": return Icons.egg_alt;
-      case "Temel Gıda": return Icons.rice_bowl; 
-      case "İçecek": return Icons.local_drink;
-      case "Atıştırmalık ve Tatlı": return Icons.cookie;
-      case "Temizlik ve Kişisel Bakım Ürünleri": return Icons.cleaning_services;
-      default: return Icons.category;
+      case "Meyve ve Sebze": return 'assets/categories/meyve_sebze.png';
+      case "Et, Tavuk ve Balık": return 'assets/categories/et_balik.png';
+      case "Süt Ürünleri ve Kahvaltılık": return 'assets/categories/sut_kahvalti.png';
+      case "Temel Gıda": return 'assets/categories/temel_gida.png';
+      case "İçecek": return 'assets/categories/icecek.png';
+      case "Atıştırmalık ve Tatlı": return 'assets/categories/atistirmalik.png';
+      case "Temizlik ve Kişisel Bakım Ürünleri": return 'assets/categories/temizlik.png';
+      default: return 'assets/categories/diger.png';
     }
   }
 
   String _formatQuantity(double quantity) {
     if (quantity % 1 == 0) return quantity.toInt().toString();
     return quantity.toStringAsFixed(2);
+  }
+
+  // --- REKLAM WIDGET ÜRETİCİ ---
+  Widget _getAdWidget(int adIndex) {
+    // Eğer bu index için daha önce reklam yüklenmediyse yükle
+    if (!_inlineAds.containsKey(adIndex)) {
+      final ad = _adService.createInlineAd(
+        onAdLoaded: () {
+          if (mounted) setState(() {}); // Reklam gelince ekranı yenile
+        }
+      );
+      ad.load();
+      _inlineAds[adIndex] = ad;
+    }
+
+    final ad = _inlineAds[adIndex]!;
+    
+    // Reklam kartı tasarımı
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      height: 270, // Medium Rectangle + Padding boyutu
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5, offset: Offset(0, 2))]
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8.0),
+            child: Text("Sponsorlu Öneri", style: TextStyle(fontSize: 10, color: Colors.grey, letterSpacing: 1)),
+          ),
+          SizedBox(
+            width: ad.size.width.toDouble(),
+            height: ad.size.height.toDouble(),
+            child: AdWidget(ad: ad),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showQuantityDialog(PantryItem item, bool isIncrement) {
@@ -589,13 +642,40 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
       return EmptyStateWidget(icon: Icons.kitchen, message: "$category Rafı Boş", subMessage: "Sağ alttaki (+) butonuyla ürün ekleyebilirsin.");
     }
 
+    // --- REKLAMLI LİSTE YAPISI (GÜNCELLENMİŞ) ---
+    // Toplam eleman sayısını hesapla: Ürünler + Reklamlar
+    int totalCount = filteredItems.length;
+    if (filteredItems.length > 4) totalCount++; // 1. Reklam için yer aç
+    if (filteredItems.length > 12) totalCount++; // 2. Reklam için yer aç
+
     return ListView.builder(
-      itemCount: filteredItems.length,
+      itemCount: totalCount,
       padding: EdgeInsets.only(bottom: 80 + MediaQuery.of(context).padding.bottom, top: 10),
       itemBuilder: (context, index) {
-        final item = filteredItems[index];
+        
+        // --- 1. REKLAM YERLEŞİMİ (4. üründen sonra, yani index 4) ---
+        if (index == 4 && filteredItems.length > 4) {
+           return _getAdWidget(0); // Reklam ID 0
+        }
+
+        // --- 2. REKLAM YERLEŞİMİ (1. reklamdan yaklaşık 8 ürün sonra, yani index 13) ---
+        // (4 ürün + 1 reklam + 8 ürün = 13. index)
+        if (index == 13 && filteredItems.length > 12) {
+           return _getAdWidget(1); // Reklam ID 1
+        }
+
+        // --- GERÇEK ÜRÜN İNDEKSİNİ HESAPLA ---
+        // Araya giren reklamları indeksten çıkararak doğru ürünü buluyoruz.
+        int itemIndex = index;
+        if (index > 4) itemIndex--; // 1. reklamı atla
+        if (index > 13) itemIndex--; // 2. reklamı atla
+
+        // Güvenlik: Liste sınırını aşarsa boş dön
+        if (itemIndex >= filteredItems.length) return const SizedBox.shrink();
+
+        final item = filteredItems[itemIndex];
         return _buildPantryItemTile(item, Theme.of(context).colorScheme)
-            .animate(delay: (index * 50).ms).slideY(begin: 0.2, end: 0).fadeIn();
+            .animate(delay: (itemIndex * 50).ms).slideY(begin: 0.2, end: 0).fadeIn();
       },
     );
   }
@@ -604,11 +684,17 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
     final expirationColor = _getExpirationColor(item.expirationDate);
     String quantityText = "";
     if (item.pieceCount > 1) {
-  // Örn: 3 Paket (Toplam 1.5 kg)
-  quantityText = "${item.pieceCount} Paket (Top: ${_formatQuantity(item.quantity)} ${item.unit})";
-} else {
-  quantityText = "${_formatQuantity(item.quantity)} ${item.unit}";
-}
+      quantityText = "${item.pieceCount} Paket (Top: ${_formatQuantity(item.quantity)} ${item.unit})";
+    } else {
+      quantityText = "${_formatQuantity(item.quantity)} ${item.unit}";
+    }
+
+    // Kategori resim yolunu al
+    final categoryImagePath = _getCategoryImagePath(_normalizeCategory(
+      (item.category == 'Diğer' || item.category == 'Genel') 
+          ? item.ingredientName 
+          : item.category
+    ));
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -623,14 +709,16 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 border: Border.all(color: expirationColor.withAlpha((0.5 * 255).round())),
                 color: expirationColor.withAlpha((0.1 * 255).round()),
               ),
-              child: Icon(
-                _getCategoryIcon(_normalizeCategory(
-                  (item.category == 'Diğer' || item.category == 'Genel') 
-                      ? item.ingredientName 
-                      : item.category
-                )), 
-                color: expirationColor, 
-                size: 24
+              // Icon yerine Image.asset kullanıyoruz
+              child: Image.asset(
+                categoryImagePath,
+                width: 24, // Icon'un size parametresiyle aynı
+                height: 24,
+                fit: BoxFit.contain,
+                // Eğer resim yüklenemezse (dosya yoksa) hata vermesin diye bir fallback (yedek) ikon koyabiliriz
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(Icons.category, color: expirationColor, size: 24);
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -639,7 +727,6 @@ class _PantryTabState extends State<PantryTab> with AutomaticKeepAliveClientMixi
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(item.ingredientName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: colorScheme.onSurface)),
-                  // DÜZELTME: "Diğer", "Bilinmiyor" gibi markaları listede gösterme
                   if (item.brand != null && 
                       item.brand!.isNotEmpty && 
                       !['diger', 'diğer', 'bilinmiyor', 'markasız'].contains(item.brand!.toLowerCase()))

@@ -31,21 +31,37 @@ class HouseholdService {
 
   // --- 1. AİLE OLUŞTUR (Kurucu) ---
   Future<String> createHousehold(String householdName) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception("Kullanıcı oturumu kapalı.");
+  final user = _auth.currentUser;
+  if (user == null) throw Exception("Kullanıcı oturumu kapalı.");
 
-    // 1. Yeni bir Hane dokümanı hazırla
-    final householdRef = _firestore.collection('households').doc();
-    final String inviteCode = _generateInviteCode();
+  String inviteCode = "";
+  bool isUnique = false;
 
-    // 2. Haneyi oluştur
-    await householdRef.set({
-      'name': householdName,
-      'ownerId': user.uid,
-      'inviteCode': inviteCode,
-      'members': [user.uid], // İlk üye kurucudur
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  // 1. BENZERSİZ KOD BULMA DÖNGÜSÜ
+  // Kod veritabanında var mı diye sor, yok diyene kadar yeni kod üret.
+  while (!isUnique) {
+    inviteCode = _generateInviteCode();
+    final query = await _firestore
+        .collection('households')
+        .where('inviteCode', isEqualTo: inviteCode)
+        .get();
+    
+    if (query.docs.isEmpty) {
+      isUnique = true;
+    }
+  }
+
+  // 2. Yeni hane referansı
+  final householdRef = _firestore.collection('households').doc();
+
+  // 3. Haneyi oluştur (Artık kodun benzersiz olduğundan eminiz)
+  await householdRef.set({
+    'name': householdName,
+    'ownerId': user.uid,
+    'inviteCode': inviteCode,
+    'members': [user.uid],
+    'createdAt': FieldValue.serverTimestamp(),
+  });
 
     // 3. Kullanıcının mevcut verilerini bu yeni eve taşı
     await _migrateUserDataToHousehold(user.uid, householdRef.id);
